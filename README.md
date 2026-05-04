@@ -1,11 +1,7 @@
-<p align="center">
-  <img src="logo.svg" width="80" alt="gridpack" />
-</p>
-
 <h1 align="center">gridpack</h1>
 
 <p align="center">
-  <strong>CSS Grid layouts in one string.</strong>
+  <strong>CSS Grid layouts in one string. <a href="https://th-k-y.github.io/gridpack/demo/">See demo.</a></strong>
 </p>
 
 <p align="center">
