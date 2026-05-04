@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/logo.svg?raw=1" width="80" alt="gridpack" />
+  <img src="logo.svg" width="80" alt="gridpack" />
 </p>
 
 <h1 align="center">gridpack</h1>
