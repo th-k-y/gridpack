@@ -1,0 +1,39 @@
+{
+	"name": "gridpack",
+	"version": "0.1.0",
+	"type": "module",
+	"description": "CSS Grid layouts in one string.",
+	"author": "theKey",
+	"license": "MIT",
+	"keywords": [
+		"css",
+		"grid",
+		"layout",
+		"react"
+	],
+	"scripts": {
+		"build": "node build.mjs && tsc --declaration --emitDeclarationOnly --allowJs --jsx react --moduleResolution node --outDir dist src/index.js"
+	},
+	"types": "dist/index.d.ts",
+	"main": "dist/index.cjs.js",
+	"module": "dist/index.esm.js",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.esm.js",
+			"require": "./dist/index.cjs.js"
+		}
+	},
+	"files": [
+		"dist",
+		"package.json",
+		"README.md",
+		"LICENSE"
+	],
+	"devDependencies": {
+		"esbuild": "^0.28.0",
+		"react": "^19.2.5",
+		"react-dom": "^19.2.5",
+		"typescript": "^6.0.3"
+	}
+}
