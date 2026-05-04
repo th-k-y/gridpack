@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/gridpack"><img src="https://img.shields.io/npm/v/gridpack.svg" alt="npm" /></a>
-  <a href="https://bundlephobia.com/package/gridpack"><img src="https://img.shields.io/bundlephobia/minzip/gridpack" alt="bundle size" /></a>
+  <a href="https://bundlejs.com/?q=gridpack&treeshake=[{Grid}]"><img src="https://deno.bundlejs.com/badge?q=gridpack&treeshake=%5B%7BGrid%7D%5D" alt="bundle size" /></a>
   <a href="https://github.com/th-k-y/gridpack/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/gridpack" alt="license" /></a>
 </p>
 
