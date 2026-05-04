@@ -1,6 +1,6 @@
 {
 	"name": "gridpack",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"type": "module",
 	"description": "CSS Grid layouts in one string.",
 	"author": "theKey",
@@ -30,6 +30,12 @@
 		"README.md",
 		"LICENSE"
 	],
+	"peerDependencies": {
+		"react": ">=17"
+	},
+	"peerDependenciesMeta": {
+		"react": { "optional": false }
+	},
 	"devDependencies": {
 		"esbuild": "^0.28.0",
 		"react": "^19.2.5",
