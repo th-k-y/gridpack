@@ -472,7 +472,7 @@ let LandingPage = ({ onNavigate }) => {
 		<div className="gp-footer">
 			<div style={{ marginBottom: 12, opacity: 0.4 }}><Logo size={28} /></div>
 			Made with ❤ in Europe. Built with gridpack, obviously.{" "}
-			<a href="https://github.com/th-k-y/gridpack">GitHub</a> | <a href="https://www.npmjs.com/package/gridpack">npm</a>
+			<a href="https://github.com/thekeydev/gridpack">GitHub</a> | <a href="https://www.npmjs.com/package/gridpack">npm</a>
 		</div>
 	</div>;
 };
