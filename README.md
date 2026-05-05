@@ -1,13 +1,13 @@
 <h1 align="center">gridpack</h1>
 
 <p align="center">
-  <strong>CSS Grid layouts in one string. <a href="https://th-k-y.github.io/gridpack/demo/">See demo.</a></strong>
+  <strong>CSS Grid layouts in one string. <a href="https://thekeydev.github.io/gridpack/demo/">See demo.</a></strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/gridpack"><img src="https://img.shields.io/npm/v/gridpack.svg" alt="npm" /></a>
   <a href="https://bundlejs.com/?q=gridpack&treeshake=[{Grid}]"><img src="https://deno.bundlejs.com/badge?q=gridpack&treeshake=%5B%7BGrid%7D%5D" alt="bundle size" /></a>
-  <a href="https://github.com/th-k-y/gridpack/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/gridpack" alt="license" /></a>
+  <a href="https://github.com/thekeydev/gridpack/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/gridpack" alt="license" /></a>
 </p>
 
 ---
@@ -253,16 +253,13 @@ Implicit rules:
 
 ## Links
 
-- [Playground](https://th-k-y.github.io/gridpack/demo/) — interactive demo with 35+ presets
-- [Documentation](https://th-k-y.github.io/gridpack/demo/) — full reference
+- [Playground](https://thekeydev.github.io/gridpack/demo/) — interactive demo with 35+ presets
+- [Documentation](https://thekeydev.github.io/gridpack/demo/) — full reference
 - [npm](https://www.npmjs.com/package/gridpack)
 
 ## Support
 
-If gridpack saves you time, consider supporting development:
-
-<a href="https://github.com/sponsors/th-k-y"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink" alt="Sponsor" /></a>
-[![Donate](https://img.shields.io/badge/Donate-PayPal-blue)](https://www.paypal.com/donate/?hosted_button_id=9X7QBXKPBB2YW)
+If gridpack saves you time, consider supporting development: [![Donate](https://img.shields.io/badge/Donate-PayPal-blue)](https://www.paypal.com/donate/?hosted_button_id=9X7QBXKPBB2YW)
 
 ## License
 

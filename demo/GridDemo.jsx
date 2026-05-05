@@ -346,10 +346,13 @@ let Playground = () => {
 
 import LandingPage from "./LandingPage";
 import Docs from "./Docs";
+import OgImage from "./OgImage";
 
 export default function App() {
-	let [tab, setTab] = React.useState("landing");
+	let [tab,setTab] = React.useState("landing");
 	let tabList = [["Welcome","landing"], ["Playground","playground"], ["Docs","docs"]];
+	if (document.location.hash=="#og:image" && tab!="ogimage")
+		setTab("ogimage");
 
 	return <Grid layout="|?wh|.#" style={{height:"100vh"}}>
 		<Style>{`
@@ -388,5 +391,6 @@ export default function App() {
 		{tab=="landing" && <LandingPage onNavigate={setTab} />}
 		{tab=="playground" && <Playground />}
 		{tab=="docs" && <Docs />}
+		{tab=="ogimage" && <OgImage />}
 	</Grid>
 }
