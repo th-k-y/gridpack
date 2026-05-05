@@ -45,12 +45,12 @@ let OgImage = () =>
 			}
 			.og-left {
 				flex: 1; display: flex; flex-direction: column;
-				justify-content: center; padding: 60px 56px;
+				justify-content: start; padding: 48px;
 				position: relative; z-index: 1;
 			}
 			.og-right {
 				width: 550px; display: flex; flex-direction: column;
-				justify-content: center; padding: 48px 48px 0 0;
+				padding: 112px 48px 0 0;
 				position: relative; z-index: 1;
 			}
 			.og-title {
@@ -93,8 +93,12 @@ let OgImage = () =>
 			.og-brand-name {
 				font-size: 32px; font-weight: 700; color: #e8e8f0;
 			}
+			.og-footer-right {
+				margin: 20px auto;
+				font-size: 32px; color: #999; z-index: 1;
+			}
 			.og-footer {
-				position: absolute; bottom: 24px; left: 56px;
+				position: absolute; bottom: 40px; left: 48px;
 				font-size: 24px; color: #999; z-index: 1;
 			}
 			.og-footer span { color: #555; }
@@ -131,6 +135,9 @@ let OgImage = () =>
 					<MiniBox c={2}>Content</MiniBox>
 					<MiniBox c={3}>Footer</MiniBox>
 				</Grid>
+			</div>
+			<div className="og-footer-right">
+				Discover demos →
 			</div>
 		</div>
 
