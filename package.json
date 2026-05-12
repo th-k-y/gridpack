@@ -1,6 +1,6 @@
 {
 	"name": "gridpack",
-	"version": "0.1.2",
+	"version": "0.2.0",
 	"type": "module",
 	"description": "CSS Grid layouts in one string.",
 	"author": "theKey",
@@ -12,7 +12,8 @@
 		"react"
 	],
 	"scripts": {
-		"build": "node build.mjs && tsc --declaration --emitDeclarationOnly --allowJs --jsx react --moduleResolution node --outDir dist src/index.js"
+		"build": "node build.mjs && tsc --declaration --emitDeclarationOnly --allowJs --jsx react --moduleResolution node --outDir dist src/index.js",
+		"watch": "node build.mjs --watch"
 	},
 	"types": "dist/index.d.ts",
 	"main": "dist/index.cjs.js",

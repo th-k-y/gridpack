@@ -1,4 +1,6 @@
-import { build } from "esbuild";
+import { build, context } from "esbuild";
+
+let watch = process.argv.includes("--watch");
 
 let shared = {
 	entryPoints: ["src/index.js"],
@@ -10,8 +12,17 @@ let shared = {
 	sourcemap: true,
 };
 
-await build({ ...shared, format: "esm", outfile: "dist/index.esm.js" });
-await build({ ...shared, format: "cjs", outfile: "dist/index.cjs.js" });
+let configs = [
+	{ ...shared, format: "esm", outfile: "dist/index.esm.js" },
+	{ ...shared, format: "cjs", outfile: "dist/index.cjs.js" },
+	{ ...shared, entryPoints: ["demo/index.jsx"],
+		format: "iife", outfile: "demo/index.js", external: undefined },
+];
 
-await build({ ...shared, entryPoints: ["demo/index.jsx"],
-	format: "iife", outfile: "demo/index.js", external: undefined });
+if (watch) {
+	let contexts = await Promise.all(configs.map(c => context(c)));
+	await Promise.all(contexts.map(c => c.watch()));
+	console.log("watching...");
+} else {
+	await Promise.all(configs.map(c => build(c)));
+}

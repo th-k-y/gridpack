@@ -122,7 +122,7 @@ let HeroShowcase = () => {
 // ============================================================
 
 let FeatureCard = ({ icon, title, desc, code }) =>
-	<Grid layout="i(C)t(C)dc it dd cc 0 8 | .#" className="gp-fcard">
+	<Grid layout="i(C)t(C)dc it dd cc 0 8 ?h | .#" className="gp-fcard">
 		<div className="gp-fcard-icon">{icon}</div>
 		<div className="gp-fcard-title">{title}</div>
 		<div className="gp-fcard-desc">{desc}</div>
@@ -144,6 +144,7 @@ let Code = ({ children, label }) =>
 // ============================================================
 
 let LandingPage = ({ onNavigate }) => {
+	let [v, setV] = React.useState({ w: 115 });
 	return <div className="gp-landing">
 		<Style>{`
 			.gp-landing {
@@ -264,7 +265,7 @@ let LandingPage = ({ onNavigate }) => {
 			}
 			.gp-codeblock-label {
 				font-family: var(--font-mono); font-size: 10px;
-				color: #555; text-transform: uppercase; letter-spacing: 1px;
+				color: #fff; text-transform: uppercase; letter-spacing: 1px;
 				padding: 8px 16px; border-bottom: 1px solid rgba(255,255,255,0.04);
 			}
 			.gp-codeblock pre {
@@ -358,7 +359,7 @@ let LandingPage = ({ onNavigate }) => {
 
 		{/* --- token vocabulary --- */}
 		<div className="gp-section">
-			<h2 className="gp-h2">10 tokens. <em>Lots of layouts.</em></h2>
+			<h2 className="gp-h2">12 tokens. <em>Lots of layouts.</em></h2>
 			<p className="gp-sub" style={{ marginBottom: 32 }}>The entire vocabulary fits on a sticky note.</p>
 			<Grid layout="*5 8 ?w" sm="*3 8 ?w" style={{ maxWidth: 800 }}>
 				{[
@@ -368,13 +369,15 @@ let LandingPage = ({ onNavigate }) => {
 					["#", "1fr", "#c3e88d"],
 					["|", "pipe / transpose", "#c792ea"],
 					["~", "minmax", "#f78c6c"],
-					["*", "wildcard", "#ff5370"],
-					["?", "flags", "#f78c6c"],
+					["*", "auto-flow / repeat", "#ff5370"],
+					["?", "flags (whfF + secbag)", "#f78c6c"],
 					["( )", "align", "#82aaff"],
 					["{ }", "vars", "#ffcb6b"],
+					["h12", "char-count", "#7fdbca"],
+					["*s3c6", "span pattern", "#c3e88d"],
 				].map(([tok, desc, color], i) =>
 					<div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0" }}>
-						<span className="gp-mono" style={{ color, fontSize: 18, fontWeight: 700, width: 36, textAlign: "center" }}>{tok}</span>
+						<span className="gp-mono" style={{ color, fontSize: 18, fontWeight: 700, width: 48, textAlign: "center" }}>{tok}</span>
 						<span style={{ fontSize: 13, color: "#666680" }}>{desc}</span>
 					</div>
 				)}
@@ -395,17 +398,23 @@ let LandingPage = ({ onNavigate }) => {
 					desc="Repeat area chars for proportional columns. ab abb = 1:2 ratio. No math needed."
 					code="ab abb" />
 				<FeatureCard icon="⇅" title="Transpose"
-					desc="Leading pipe swaps axes. Vertical stack is one character away from horizontal."
+				desc="Leading pipe swaps axes — sizes, gaps, alignment all follow. Vertical stack is one char away."
 					code="|abc" />
+				<FeatureCard icon="⊟" title="Auto-Flow"
+					desc="Just say how many columns. Rows derived from children. Reverse flow with ?f, dense packing with ?F."
+					code="*4 ?whF" />
 				<FeatureCard icon="↕" title="Responsive"
 					desc="Different layout strings per container breakpoint. No media queries, no overrides."
 					code='sm="ab aab" lg="abc"' />
-				<FeatureCard icon="✱" title="Repeat Rows"
-					desc="Dynamic children? Append * to repeat a row. Forms, lists, card grids — auto-expanding."
-					code="habf hh ab* ff" />
+				<FeatureCard icon="✱" title="Repeat & Cycle"
+					desc="Repeat rows expand from children. Trailing * in sizes cycles the pattern across all tracks."
+					code="*6 | 80 # *" />
 				<FeatureCard icon="⚡" title="Extensions"
-					desc="Split panes, collapsible areas, tabs, fisheye zoom — composable behavior via a simple array."
+					desc="Split panes, collapsible areas, tabs, fisheye zoom, custom DOM — composable behavior via an array."
 					code="extensions={[splitPane(...)]}" />
+				<FeatureCard icon="🔲" title="Render Hook"
+					desc="Replace the container and cell tags. Build semantic HTML tables, definition lists, or any DOM shape."
+					code='render({ container, cell })' />
 			</Grid>
 		</div>
 
@@ -426,6 +435,7 @@ let LandingPage = ({ onNavigate }) => {
 					{ name: "animate", desc: "Smooth CSS transitions on track changes", code: 'animate({ duration: "0.3s" })' },
 					{ name: "fisheye", desc: "Tracks expand near cursor, compress away", code: 'fisheye({ axis: "both" })' },
 					{ name: "multiColumn", desc: "CSS columns aligned to grid tracks", code: 'multiColumn({ area: "c" })' },
+					{ name: "render", desc: "Custom container and cell tags for semantic DOM", code: 'render({ container, cell })' },
 					{ name: "debug", desc: "Visualize grid cell boundaries", code: "debug()" },
 				].map((ext, i) =>
 					<div key={i} style={{ padding: "16px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
@@ -443,10 +453,21 @@ let LandingPage = ({ onNavigate }) => {
 		<div className="gp-section">
 			<h2 className="gp-h2">Quick <em>Start</em></h2>
 			<div style={{ height: 24 }} />
-			<Grid layout="| ?w" gap={20} style={{ maxWidth: 600 }}>
+			<Grid layout="*2 ?w | 420# | ..." gap={20} style={{ maxWidth: 800 }}>
 				<Code label="install">npm install gridpack</Code>
+				<div></div>
 				<Code label="usage"><span className="kw">import</span> {"{ Grid }"} <span className="kw">from</span> <span className="str">"gridpack"</span>{"\n\n"}<span className="tag">{"<Grid"}</span> <span className="attr">layout</span>=<span className="str">"hsCf hhh scc sff 8"</span><span className="tag">{">"}</span>{"\n  "}<span className="tag">{"<Header />"}</span>{"\n  "}<span className="tag">{"<Sidebar />"}</span>{"\n  "}<span className="tag">{"<Content />"}</span>{"\n  "}<span className="tag">{"<Footer />"}</span>{"\n"}<span className="tag">{"</Grid>"}</span></Code>
+				<Grid layout="hsCf hhh scc sff 8">
+					<MiniBox>Header</MiniBox>
+					<MiniBox>Sidebar</MiniBox>
+					<MiniBox>Content</MiniBox>
+					<MiniBox>Footer</MiniBox>
+				</Grid>
 				<Code label="with extensions"><span className="kw">import</span> {"{ Grid, splitPane }"} <span className="kw">from</span> <span className="str">"gridpack"</span>{"\n\n"}<span className="kw">let</span> [v, setV] = <span className="fn">useState</span>({"{ w: 200 }"});{"\n\n"}<span className="tag">{"<Grid"}</span>{"\n  "}<span className="attr">layout</span>=<span className="str">{'"sC | {w}"'}</span>{"\n  "}<span className="attr">vars</span>={"{v}"} <span className="attr">onVarsChange</span>={"{setV}"}{"\n  "}<span className="attr">extensions</span>={"{[splitPane({ var: \"w\", edge: \"s:e\" })]}"}{"\n"}<span className="tag">{">"}</span>{"\n  "}<span className="tag">{"<Sidebar />"}</span>{"\n  "}<span className="tag">{"<Content />"}</span>{"\n"}<span className="tag">{"</Grid>"}</span></Code>
+				<Grid layout="sC | {w}" vars={v} onVarsChange={setV} extensions={[splitPane({ var: "w", edge: "s:e" })]}>
+					<MiniBox>Sidebar</MiniBox>
+					<MiniBox>Content</MiniBox>
+				</Grid>
 			</Grid>
 		</div>
 

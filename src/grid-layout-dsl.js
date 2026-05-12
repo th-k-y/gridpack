@@ -10,6 +10,7 @@ let tokenizeSizes = (s) => {
 		let ch = s[i];
 		if (ch === " " || ch === "\t") flush();
 		else if (ch === "~") buf += ch;
+		else if (ch === "*") { flush(); tokens.push("*"); }
 		else if (ch === "." || ch === "#") {
 			let prevTilde = buf.endsWith("~");
 			let nextTilde = i + 1 < s.length && s[i + 1] === "~";
@@ -36,15 +37,30 @@ let normSize = (s) => {
 	return normSizeAtom(s);
 };
 
+// --- fill sizes to target count: trailing * = cycle pattern, otherwise pad with defaultSize ---
+let fillSizes = (sizeStr, count, defaultSize = "1fr") => {
+	if (!sizeStr) return Array(count).fill(defaultSize);
+	let tokens = tokenizeSizes(sizeStr);
+	let repeat = tokens[tokens.length - 1] === "*";
+	if (repeat) tokens = tokens.slice(0, -1);
+	let normed = tokens.map(normSize);
+	if (normed.length === 0) return Array(count).fill(defaultSize);
+	if (repeat) return Array.from({ length: count }, (_, i) => normed[i % normed.length]);
+	let fill = count - normed.length;
+	return fill > 0 ? [...normed, ...Array(fill).fill(defaultSize)] : normed.slice(0, count);
+};
+
 // --- ? flags: secbag/SECBAG + w/h ---
 let JustifyMap = { s: "start", e: "end", c: "center", b: "space-between", a: "space-around", g: "space-evenly" };
 let AlignMap = { S: "start", E: "end", C: "center", B: "space-between", A: "space-around", G: "space-evenly" };
 
 let parseFlags = (str) => {
-	let f = { fullWidth: false, fullHeight: false, justifyContent: null, alignContent: null };
+	let f = { fullWidth: false, fullHeight: false, flowReverse: false, flowDense: false, justifyContent: null, alignContent: null };
 	for (let ch of str) {
 		if (ch === "w") f.fullWidth = true;
 		else if (ch === "h") f.fullHeight = true;
+		else if (ch === "f") f.flowReverse = true;
+		else if (ch === "F") f.flowDense = true;
 		else if (JustifyMap[ch]) f.justifyContent = JustifyMap[ch];
 		else if (AlignMap[ch]) f.alignContent = AlignMap[ch];
 	}
@@ -81,6 +97,63 @@ let parseLegend = (legend) => {
 	return { areas, growAreas, areaAlign };
 };
 
+// --- expand char-count shorthand: h12 ? hhhhhhhhhhhh, s3 ? sss, a2b ? aab ---
+let expandCharCounts = (s) => {
+	let result = "";
+	let i = 0;
+	while (i < s.length) {
+		let ch = s[i];
+		if (/[a-zA-Z.]/.test(ch)) {
+			// check for trailing number
+			let numStr = "";
+			let j = i + 1;
+			while (j < s.length && /\d/.test(s[j])) { numStr += s[j]; j++; }
+			let count = numStr ? parseInt(numStr) : 1;
+			result += ch.repeat(count);
+			i = j;
+		} else { result += ch; i++; }
+	}
+	return result;
+};
+
+// --- parse auto-flow span pattern: *s3c6a3 ? { colCount: 12, spans: [{area:"s",span:3},{area:"c",span:6},{area:"a",span:3}] } ---
+let parseAutoFlowPattern = (pat) => {
+	// pat is everything after the leading * e.g. "s3c6a3" or "w2*2" or "12" or ""
+	let spans = [];
+	let i = 0;
+	let totalCols = 0;
+	while (i < pat.length) {
+		let ch = pat[i];
+		if (ch === "*") {
+			// *N means N unnamed single-span columns
+			let numStr = "";
+			let j = i + 1;
+			while (j < pat.length && /\d/.test(pat[j])) { numStr += pat[j]; j++; }
+			let count = numStr ? parseInt(numStr) : 1;
+			for (let k = 0; k < count; k++) { spans.push({ area: null, span: 1 }); totalCols++; }
+			i = j;
+		} else if (/[a-zA-Z]/.test(ch)) {
+			let area = ch.toLowerCase();
+			let numStr = "";
+			let j = i + 1;
+			while (j < pat.length && /\d/.test(pat[j])) { numStr += pat[j]; j++; }
+			let span = numStr ? parseInt(numStr) : 1;
+			spans.push({ area, span });
+			totalCols += span;
+			i = j;
+		} else if (/\d/.test(ch)) {
+			// plain number = N unnamed columns (same as *N shorthand for compat)
+			let numStr = "";
+			let j = i;
+			while (j < pat.length && /\d/.test(pat[j])) { numStr += pat[j]; j++; }
+			let count = parseInt(numStr);
+			for (let k = 0; k < count; k++) { spans.push({ area: null, span: 1 }); totalCols++; }
+			i = j;
+		} else i++;
+	}
+	return { colCount: totalCols, spans };
+};
+
 // --- main parser ---
 let parseGridLayout = (input, childCount) => {
 	input = (input || "").trim();
@@ -109,13 +182,15 @@ let parseGridLayout = (input, childCount) => {
 	if (buf) segments.push(buf);
 
 	// extract ? flags (floating position)
-	let flags = { fullWidth: false, fullHeight: false, justifyContent: null, alignContent: null };
+	let flags = { fullWidth: false, fullHeight: false, flowReverse: false, flowDense: false, justifyContent: null, alignContent: null };
 	let remaining = [];
 	for (let seg of segments) {
 		if (seg.startsWith("?")) {
 			let f = parseFlags(seg.substring(1));
 			if (f.fullWidth) flags.fullWidth = true;
 			if (f.fullHeight) flags.fullHeight = true;
+			if (f.flowReverse) flags.flowReverse = true;
+			if (f.flowDense) flags.flowDense = true;
 			if (f.justifyContent) flags.justifyContent = f.justifyContent;
 			if (f.alignContent) flags.alignContent = f.alignContent;
 		} else remaining.push(seg);
@@ -132,78 +207,212 @@ let parseGridLayout = (input, childCount) => {
 		else return { error: "need at least a legend or *" };
 	}
 
-	// expand * or *N legend
+	// --- detect auto-flow: segment starting with * ---
 	let expanded = false;
-	let autoFlow = 0; // >0 means auto-flow grid with N columns
-	if (/^\*\d*$/.test(segments[0])) {
+	let autoFlow = 0;
+
+	// check for auto-flow segments (segments starting with * that aren't row-repeat)
+	// *  *N  *s3c6a3  *w2*2  — these are all auto-flow patterns in the first segment
+	// but also: "h12 *s3c6a3" — auto-flow pattern in a non-first segment
+	// strategy: find segments starting with * and parse them
+
+	// first, check if first segment is a * pattern
+	if (segments[0].startsWith("*")) {
+		let pat = segments[0].substring(1); // strip leading *
+
+		// extract trailing gap(s) from remaining segments
+		let localGapH = null, localGapV = null;
+		let gEndIdx = segments.length;
+		if (gEndIdx > 1 && /^\d+(\.\d+)?$/.test(segments[gEndIdx - 1])) {
+			if (gEndIdx > 2 && /^\d+(\.\d+)?$/.test(segments[gEndIdx - 2])) {
+				localGapH = parseFloat(segments[gEndIdx - 2]);
+				localGapV = parseFloat(segments[gEndIdx - 1]);
+			} else {
+				localGapH = parseFloat(segments[gEndIdx - 1]);
+				localGapV = localGapH;
+			}
+		}
+
 		if (!childCount || childCount < 1) return { error: "* requires children > 0" };
-		let colNum = parseInt(segments[0].substring(1)) || 0; // *7 ? 7, * ? 0
-		if (colNum > 0) {
-			// auto-flow mode: *N creates N columns, ceil(children/N) rows
+
+		if (pat === "" || /^\d+$/.test(pat)) {
+			// plain * or *N — simple auto-flow, all children span 1
+			let colNum = pat ? parseInt(pat) : childCount;
 			autoFlow = colNum;
 
-			// extract trailing gap(s) from remaining segments
-			let localGapH = null, localGapV = null;
-			let gEndIdx = segments.length;
-			if (gEndIdx > 1 && /^\d+(\.\d+)?$/.test(segments[gEndIdx - 1])) {
-				if (gEndIdx > 2 && /^\d+(\.\d+)?$/.test(segments[gEndIdx - 2])) {
-					localGapH = parseFloat(segments[gEndIdx - 2]);
-					localGapV = parseFloat(segments[gEndIdx - 1]);
-				} else {
-					localGapH = parseFloat(segments[gEndIdx - 1]);
-					localGapV = localGapH;
-				}
-			}
+			let colDefault = flags.justifyContent ? "auto" : "1fr";
+			let rowDefault = flags.alignContent ? "auto" : "1fr";
+			let colSizeList = fillSizes(colSizes, colNum, colDefault);
 
 			let rowNum = Math.ceil(childCount / colNum);
+			let rowSizeList = fillSizes(rowSizes, rowNum, rowDefault);
 
-			let tokenRows = [];
-			let allAreas = [];
-			let ci = 0;
-			for (let r = 0; r < rowNum; r++) {
-				let row = [];
-				for (let c = 0; c < colNum; c++) {
-					let name = ci < childCount ? "c" + ci : ".";
-					row.push(name);
-					if (ci < childCount) allAreas.push("c" + ci);
-					ci++;
-				}
-				tokenRows.push(row);
-			}
+			// no grid-template-areas, use auto-placement
+			let areas = Array.from({ length: childCount }, (_, i) => "c" + i);
 
-			let templateAreas = tokenRows.map(row => '"' + row.join(" ") + '"');
-			let colSizeList = colSizes ? tokenizeSizes(colSizes).map(normSize) : Array(colNum).fill("1fr");
-			let rowSizeList = rowSizes ? tokenizeSizes(rowSizes).map(normSize) : Array(rowNum).fill("1fr");
-
-			if (transpose) {
-				let newRows = [];
-				for (let c = 0; c < colNum; c++) {
-					let row = [];
-					for (let r = 0; r < rowNum; r++) row.push(tokenRows[r][c]);
-					newRows.push(row);
-				}
-				templateAreas = newRows.map(row => '"' + row.join(" ") + '"');
-				let tmp = colSizeList; colSizeList = rowSizeList; rowSizeList = tmp;
-			}
+			if (transpose) { let t = colSizeList; colSizeList = rowSizeList; rowSizeList = t; let tr = colNum; colNum = rowNum; rowNum = tr; let tg = localGapH; localGapH = localGapV; localGapV = tg; }
 
 			return {
-				areas: allAreas, growAreas: [], areaAlign: {}, templateAreas,
+				areas, growAreas: [], areaAlign: {},
+				templateAreas: null, // signal: no grid-template-areas
 				colSizes: colSizeList, rowSizes: rowSizeList,
-				colCount: transpose ? rowNum : colNum,
-				rowCount: transpose ? colNum : rowNum,
-				gapH: localGapH, gapV: localGapV, transpose, expanded: true, flags, autoFlow: colNum,
+				colCount: colNum, rowCount: rowNum,
+				gapH: localGapH, gapV: localGapV, transpose, expanded: true, flags,
+				autoFlow: colNum,
 			};
 		}
-		// plain * — single row of N children
-		if (childCount > 26) return { error: "* supports max 26 children (a-z)" };
-		segments[0] = "abcdefghijklmnopqrstuvwxyz".substring(0, childCount);
-		expanded = true;
+
+		// pattern auto-flow: *s3c6a3, *w2*2, etc.
+		let { colCount: patCols, spans } = parseAutoFlowPattern(pat);
+		autoFlow = patCols;
+
+		// also parse non-first segments as static rows with their own span patterns
+		// e.g. "h12 *s3c6a3" — h12 is a static row
+		let staticRows = [];
+		let autoFlowSegIdx = 0;
+		for (let si = 1; si < segments.length; si++) {
+			let seg = segments[si];
+			if (/^\d+(\.\d+)?$/.test(seg)) break; // gap
+			if (seg.startsWith("?")) continue; // flag (already extracted)
+			// it's a static row with char-count spans
+			// but wait — in this branch segments[0] is the *, so segments[1..] are either gaps or other patterns
+			// actually "h12 *s3c6a3" would have segments = ["h12", "*s3c6a3"] or ["*s3c6a3"] if h12 is part of the first segment
+			// hmm — let me handle this in the map-row path instead
+		}
+
+		// compute max col count across all rows
+		// for now, just use the pattern's col count
+		let colNum = patCols;
+
+		let colDefault = flags.justifyContent ? "auto" : "1fr";
+		let rowDefault = flags.alignContent ? "auto" : "1fr";
+		let colSizeList = fillSizes(colSizes, colNum, colDefault);
+
+		// build span info for children: cycle through the pattern
+		let childSpans = [];
+		for (let ci = 0; ci < childCount; ci++) {
+			let spanInfo = spans[ci % spans.length];
+			childSpans.push(spanInfo);
+		}
+
+		let rowNum = 0;
+		let colAccum = 0;
+		for (let cs of childSpans) { colAccum += cs.span; if (colAccum > colNum || colAccum === colNum) { rowNum++; colAccum = colAccum > colNum ? cs.span : 0; } }
+		if (colAccum > 0) rowNum++;
+
+		let rowSizeList = fillSizes(rowSizes, rowNum, rowDefault);
+
+		let areas = childSpans.map((s, i) => s.area || ("c" + i));
+
+		return {
+			areas, growAreas: [], areaAlign: {},
+			templateAreas: null,
+			colSizes: colSizeList, rowSizes: rowSizeList,
+			colCount: colNum, rowCount: rowNum,
+			gapH: localGapH, gapV: localGapV, transpose, expanded: true, flags,
+			autoFlow: colNum, childSpans,
+		};
+	}
+
+	// --- also handle non-first segments with * for auto-flow rows ---
+	// e.g. "h12 *s3c6a3" — first segment is static, second is auto-flow
+	// detect: any segment (not first) starting with *
+	let autoFlowIdx = -1;
+	let autoFlowPat = null;
+	for (let si = 0; si < segments.length; si++) {
+		if (si > 0 && segments[si].startsWith("*") && !segments[si].endsWith("*")) {
+			autoFlowIdx = si;
+			autoFlowPat = segments[si].substring(1);
+			break;
+		}
+	}
+
+	if (autoFlowIdx >= 0) {
+		// mixed mode: static rows before, auto-flow pattern for remaining children
+		// parse static rows with char-count expansion
+		let staticSegments = segments.slice(0, autoFlowIdx);
+		let { colCount: patCols, spans } = parseAutoFlowPattern(autoFlowPat);
+
+		// parse static row segments for their spans
+		let staticSpans = [];
+		let maxCols = patCols;
+		for (let seg of staticSegments) {
+			if (/^\d+(\.\d+)?$/.test(seg)) continue; // gap
+			let expanded = expandCharCounts(seg);
+			if (expanded.length > maxCols) maxCols = expanded.length;
+			// each char in expanded row = one cell, count per unique char = span
+			let rowSpans = [];
+			let i = 0;
+			while (i < expanded.length) {
+				let ch = expanded[i];
+				let count = 0;
+				while (i < expanded.length && expanded[i] === ch) { count++; i++; }
+				rowSpans.push({ area: ch.toLowerCase(), span: count });
+			}
+			staticSpans.push(rowSpans);
+		}
+
+		// extract gaps
+		let localGapH = null, localGapV = null;
+		let gEndIdx = segments.length;
+		if (gEndIdx > autoFlowIdx + 1 && /^\d+(\.\d+)?$/.test(segments[gEndIdx - 1])) {
+			if (gEndIdx > autoFlowIdx + 2 && /^\d+(\.\d+)?$/.test(segments[gEndIdx - 2])) {
+				localGapH = parseFloat(segments[gEndIdx - 2]);
+				localGapV = parseFloat(segments[gEndIdx - 1]);
+			} else {
+				localGapH = parseFloat(segments[gEndIdx - 1]);
+				localGapV = localGapH;
+				}
+			}
+
+		let colNum = maxCols;
+		let colDefault = flags.justifyContent ? "auto" : "1fr";
+		let rowDefault = flags.alignContent ? "auto" : "1fr";
+		let colSizeList = fillSizes(colSizes, colNum, colDefault);
+
+		// static children count
+		let staticChildCount = staticSpans.reduce((sum, row) => sum + row.length, 0);
+		let dynamicChildCount = (childCount || 0) - staticChildCount;
+
+		// build all child spans: static rows first, then cycling pattern
+		let allSpans = [];
+		for (let row of staticSpans) for (let s of row) allSpans.push(s);
+		if (dynamicChildCount > 0) {
+			for (let ci = 0; ci < dynamicChildCount; ci++) {
+				allSpans.push(spans[ci % spans.length]);
+			}
+		}
+
+		let areas = allSpans.map((s, i) => s.area || ("c" + i));
+
+		// count rows
+		let rowNum = staticSpans.length;
+		let colAccum = 0;
+		for (let ci = staticChildCount; ci < allSpans.length; ci++) {
+			colAccum += allSpans[ci].span;
+			if (colAccum >= colNum) { rowNum++; colAccum = colAccum > colNum ? allSpans[ci].span : 0; }
+		}
+		if (colAccum > 0) rowNum++;
+
+		let rowSizeList = fillSizes(rowSizes, rowNum, rowDefault);
+
+		return {
+			areas, growAreas: [], areaAlign: {},
+			templateAreas: null,
+			colSizes: colSizeList, rowSizes: rowSizeList,
+			colCount: colNum, rowCount: rowNum,
+			gapH: localGapH, gapV: localGapV, transpose, expanded: true, flags,
+			autoFlow: colNum, childSpans: allSpans,
+		};
 	}
 
 	if (/^\d+(\.\d+)?$/.test(segments[0]))
 		return { error: `"${segments[0]}" looks like a number, not a legend` };
 
-	// parse legend
+	// --- area-based path (existing) ---
+	// expand char-counts in legend and map rows
+	// legend: parse normally (parseLegend handles letters + parens)
+	// map rows: expand char-counts before processing
 	let legendResult = parseLegend(segments[0]);
 	if (legendResult.error) return legendResult;
 	let { areas, growAreas, areaAlign } = legendResult;
@@ -224,6 +433,14 @@ let parseGridLayout = (input, childCount) => {
 
 	let mapRows = segments.slice(1, endIdx);
 	if (mapRows.length == 0) mapRows = [areas.join("")];
+
+	// expand char-counts in map rows: s3 ? sss, h12 ? hhhhhhhhhhhh
+	mapRows = mapRows.map(row => {
+		// preserve trailing * for repeat detection
+		let suffix = row.endsWith("*") ? "*" : "";
+		let body = suffix ? row.slice(0, -1) : row;
+		return expandCharCounts(body) + suffix;
+	});
 
 	// --- detect repeat row (ends with *) ---
 	let repeatIdx = -1;
@@ -302,7 +519,7 @@ let parseGridLayout = (input, childCount) => {
 		let templateAreas = tokenRows.map(row => '"' + row.join(" ") + '"');
 
 		let colSizeList = colSizes
-			? tokenizeSizes(colSizes).map(normSize)
+			? fillSizes(colSizes, colCount, "auto")
 			: Array.from({ length: colCount }, (_, c) => {
 				for (let row of tokenRows) {
 					let name = row[c];
@@ -312,14 +529,24 @@ let parseGridLayout = (input, childCount) => {
 				return "auto";
 			});
 
+		let totalRowCount = tokenRows.length;
 		let rowSizeList = [];
 		if (rowSizes) {
-			let sizeTokens = tokenizeSizes(rowSizes).map(normSize);
-			for (let i = 0; i < mapRows.length; i++) {
-				if (i === repeatIdx) {
-					let sz = i < sizeTokens.length ? sizeTokens[i] : "auto";
-					for (let n = 0; n < repeatCount; n++) rowSizeList.push(sz);
-				} else rowSizeList.push(i < sizeTokens.length ? sizeTokens[i] : "auto");
+			let sizeTokens = tokenizeSizes(rowSizes);
+			let repeat = sizeTokens[sizeTokens.length - 1] === "*";
+			if (repeat) sizeTokens = sizeTokens.slice(0, -1);
+			let normed = sizeTokens.map(normSize);
+			if (repeat) {
+				// cycle over all expanded rows
+				rowSizeList = Array.from({ length: totalRowCount }, (_, i) => normed[i % normed.length]);
+			} else {
+				// original behavior: sizes map to pre-expansion rows, repeat-row size fills all copies
+				for (let i = 0; i < mapRows.length; i++) {
+					if (i === repeatIdx) {
+						let sz = i < normed.length ? normed[i] : "auto";
+						for (let n = 0; n < repeatCount; n++) rowSizeList.push(sz);
+					} else rowSizeList.push(i < normed.length ? normed[i] : "auto");
+				}
 			}
 		} else {
 			for (let row of tokenRows) {
@@ -341,6 +568,14 @@ let parseGridLayout = (input, childCount) => {
 			}
 			templateAreas = newRows.map(row => '"' + row.join(" ") + '"');
 			let tmp = colSizeList; colSizeList = rowSizeList; rowSizeList = tmp;
+			// swap justify/align axes
+			let swapped = {};
+			for (let [k, v] of Object.entries(expandedAlign)) {
+				swapped[k] = { justifySelf: v.alignSelf, alignSelf: v.justifySelf };
+			}
+			expandedAlign = swapped;
+			flags = { ...flags, justifyContent: flags.alignContent, alignContent: flags.justifyContent };
+			let tmpG = gapH; gapH = gapV; gapV = tmpG;
 		}
 
 		let rowCount = transpose ? colCount : tokenRows.length;
@@ -405,7 +640,7 @@ let parseGridLayout = (input, childCount) => {
 		}
 	}
 	let colSizeList = colSizes
-		? tokenizeSizes(colSizes).map(normSize)
+		? fillSizes(colSizes, colCount, proportional ? "1fr" : "auto")
 		: Array.from({ length: colCount }, (_, c) => {
 			// if any area repeats in this column's row, treat as proportional ? 1fr
 			for (let row of mapRows) {
@@ -415,7 +650,7 @@ let parseGridLayout = (input, childCount) => {
 		});
 
 	let rowSizeList = rowSizes
-		? tokenizeSizes(rowSizes).map(normSize)
+		? fillSizes(rowSizes, mapRows.length, "auto")
 		: mapRows.map(row => {
 			for (let ch of row) { if (growAreas.has(ch)) return "1fr"; }
 			return "auto";
@@ -430,6 +665,14 @@ let parseGridLayout = (input, childCount) => {
 		}
 		templateAreas = newRows.map(row => '"' + [...row].join(" ") + '"');
 		let tmp = colSizeList; colSizeList = rowSizeList; rowSizeList = tmp;
+		// swap justify/align axes
+		let swapped = {};
+		for (let [k, v] of Object.entries(areaAlign)) {
+			swapped[k] = { justifySelf: v.alignSelf, alignSelf: v.justifySelf };
+		}
+		areaAlign = swapped;
+		flags = { ...flags, justifyContent: flags.alignContent, alignContent: flags.justifyContent };
+		let tmpG = gapH; gapH = gapV; gapV = tmpG;
 	}
 
 	let rowCount = transpose ? colCount : mapRows.length;
@@ -451,12 +694,20 @@ let toGridStyle = (parsed) => {
 	let hasFrRows = parsed.rowSizes.some(s => s.includes("fr"));
 	let hasGrowAreas = !!parsed.growAreas.length && !parsed.flags.fullWidth && !parsed.flags.fullHeight;
 
-	let style = {
-		display: "grid",
-		gridTemplateAreas: parsed.templateAreas.join(" "),
-		gridTemplateColumns: parsed.colSizes.join(" "),
-		gridTemplateRows: parsed.rowSizes.join(" "),
-	};
+	let style = { display: "grid" };
+
+	if (parsed.templateAreas) {
+		// area-based mode
+		style.gridTemplateAreas = parsed.templateAreas.join(" ");
+	} else {
+		// auto-flow mode — default is row, transpose flips to column, ?f reverses, ?F adds dense
+		let base = parsed.transpose ? "column" : "row";
+		if (parsed.flags.flowReverse) base = base === "row" ? "column" : "row";
+		style.gridAutoFlow = base + (parsed.flags.flowDense ? " dense" : "");
+	}
+
+	style.gridTemplateColumns = parsed.colSizes.join(" ");
+	style.gridTemplateRows = parsed.rowSizes.join(" ");
 
 	if (hasGrowAreas || parsed.flags.fullWidth) style.width = "100%"; else style.width = "fit-content";
 	if (hasGrowAreas || parsed.flags.fullHeight) style.height = "100%"; else style.height = "fit-content";
@@ -475,8 +726,19 @@ let toGridStyle = (parsed) => {
 };
 
 // --- helper: get style for a specific area ---
-let toAreaStyle = (parsed, areaName) => {
-	let style = { gridArea: areaName };
+let toAreaStyle = (parsed, areaName, childIdx) => {
+	let style = {};
+
+	if (parsed.templateAreas) {
+		// area-based mode
+		style.gridArea = areaName;
+	} else if (parsed.childSpans && childIdx != null && childIdx < parsed.childSpans.length) {
+		// auto-flow mode with spans
+		let span = parsed.childSpans[childIdx].span;
+		if (span > 1) style.gridColumn = `span ${span}`;
+	}
+	// else: auto-flow without spans, no style needed (auto-placement)
+
 	let align = parsed.areaAlign[areaName];
 	if (align) {
 		if (align.justifySelf) style.justifySelf = align.justifySelf;

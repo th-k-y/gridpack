@@ -20,8 +20,8 @@ export default function Docs() {
 	return <Grid gap={16} style={{ padding: 8, overflow: "auto", width: "100%", height: "100%" }}>
 		<div style={{ maxWidth: 700, padding: "0 4px", lineHeight: 1.8 }}>
 			<Section title="Layout String Grammar">
-				<code style={{ color: "#c3e88d", display: "block", background: "#0f0f23", padding: 10, borderRadius: 4, marginBottom: 10, border: "1px solid #2a2a4a" }}>
-					[<F>|</F>] [<K>legend</K>|<F>*</F>|<F>*N</F>] [<K>rows</K>] [<F>gap</F> [<F>gap</F>]] [<F>?flags</F>] [<F>|</F> <K>cols</K> [<F>|</F> <K>rows</K>]]
+				<code style={{ color: "#c3e88d", display: "block", background: "#0f0f23", padding: 10, borderRadius: 4, marginBottom: 10, border: "1px solid #2a2a4a", lineHeight: 1.6 }}>
+					[<F>|</F>] [<K>legend</K> | <F>*</F> | <F>*N</F> | <F>*pattern</F>] [<K>rows</K>] [<F>gap</F> [<F>gap</F>]] [<F>?flags</F>] [<F>|</F> <K>col-sizes</K> [<F>|</F> <K>row-sizes</K>]]
 				</code>
 			</Section>
 			<Section title="Map Tokens">
@@ -32,17 +32,41 @@ export default function Docs() {
 				<Ex code="number" desc="Gap (in map) / px size (in sizes)" />
 				<Ex code="|" desc="Transpose prefix / pipe separator for col|row sizes" />
 				<Ex code="*" desc="Auto-legend from children count (single row)" />
-				<Ex code="*N" desc="Auto-flow grid with N columns, rows derived from children count" />
+				<Ex code="*N" desc="Auto-flow grid with N columns" />
+				<Ex code="*pattern" desc="Auto-flow with span pattern — e.g. *s3c6a3 = 12-col with 3/6/3 spans" />
+				<Ex code="h12" desc="Char-count shorthand — h12 expands to hhhhhhhhhhhh in map rows" />
 				<Ex code="ab*" desc="Repeat row — expands based on children" />
 				<Ex code="Ab*" desc="Uppercase in repeat row = pinned (shared, not numbered)" />
 				<Ex code="a~b" desc="minmax(a, b) — e.g. 200~# = minmax(200px, 1fr)" />
 				<Ex code="," desc="Optional separator (commas or spaces)" />
-				<Ex code="{var}" desc="Template variable" />
+				<Ex code="{var}" desc="Template variable — replaced from vars prop" />
+			</Section>
+			<Section title="Auto-Flow Modes">
+				<div style={{ color: "#888", marginBottom: 4 }}>When no map rows are given, children are auto-placed in a grid.</div>
+				<Ex code="*" desc="Single row, all children side by side" />
+				<Ex code="*4" desc="4 columns, rows auto-generated from child count" />
+				<Ex code="|*3" desc="Transposed: 3 rows, children flow as columns" />
+				<Ex code="*s3c6a3" desc="Span pattern: 12-col grid, children cycle 3/6/3 spans" />
+				<Ex code="*w2*2" desc="Pattern: w spans 2 + 2 singles = 4-col grid" />
+				<Ex code="h12 *s3c6a3" desc="Mixed: static header row + auto-flow body" />
+				<div style={{ color: "#555", marginTop: 4 }}>Auto-flow areas are named <C>c0</C>, <C>c1</C>, <C>c2</C>, ... for use with extensions.</div>
+			</Section>
+			<Section title="Size Sections">
+				<div style={{ color: "#888", marginBottom: 4 }}>After the pipe(s): <code style={{ color: "#c3e88d" }}>| col-sizes | row-sizes</code></div>
+				<Ex code="." desc="auto" />
+				<Ex code="#" desc="1fr" />
+				<Ex code="200" desc="200px" />
+				<Ex code="200~#" desc="minmax(200px, 1fr)" />
+				<Ex code="100 200 *" desc="Trailing * cycles sizes to fill all tracks: 100 200 100 200 ..." />
+				<Ex code="|| 40 80 *" desc="Skip col-sizes (empty), cycle row-sizes: 40 80 40 80 ..." />
+				<div style={{ color: "#555", marginTop: 4 }}>Without trailing <C>*</C>, remaining tracks are filled with 1fr (auto-flow) or auto (map).</div>
 			</Section>
 			<Section title="? Flags (container-level)">
-				<div style={{ color: "#888", marginBottom: 4 }}>Lowercase = justify-content, Uppercase = align-content</div>
-				<Ex code="?w" desc="Force full width" />
-				<Ex code="?h" desc="Force full height" />
+				<div style={{ color: "#888", marginBottom: 4 }}>Flags float freely in the layout string. Lowercase = justify, Uppercase = align.</div>
+				<Ex code="?w" desc="Full width (width: 100%)" />
+				<Ex code="?h" desc="Full height (height: 100%)" />
+				<Ex code="?f" desc="Reverse auto-flow direction (row↔column) — auto-flow only" />
+				<Ex code="?F" desc="Dense packing (grid-auto-flow: dense) — auto-flow only" />
 				<Ex code="?s / ?S" desc="start" />
 				<Ex code="?e / ?E" desc="end" />
 				<Ex code="?c / ?C" desc="center" />
@@ -50,13 +74,15 @@ export default function Docs() {
 				<Ex code="?a / ?A" desc="space-around" />
 				<Ex code="?g / ?G" desc="space-evenly (Gaps)" />
 				<div style={{ color: "#555", marginTop: 4 }}>Mnemonic: <C>SECBAG</C> — Start End Center Borders Around Gaps</div>
+				<div style={{ color: "#555", marginTop: 2 }}>Transpose swaps justify↔align axes automatically.</div>
 			</Section>
-			<Section title="Legend Modifiers (per-area alignment)">
-				<Ex code="a(s/e/c)" desc="justify-self" />
-				<Ex code="a(S/E/C)" desc="align-self" />
-				<Ex code="a(cC)" desc="center both" />
+			<Section title="Per-Area Alignment">
+				<Ex code="a(s/e/c)" desc="justify-self: start / end / center" />
+				<Ex code="a(S/E/C)" desc="align-self: start / end / center" />
+				<Ex code="a(cC)" desc="center both axes" />
+				<div style={{ color: "#555", marginTop: 4 }}>Transpose swaps justify-self↔align-self.</div>
 			</Section>
-			<Section title="Legend Modifiers (per-area alignment)">
+			<Section title="Proportional Columns">
 				<div style={{ color: "#888", marginBottom: 4 }}>Repeating area chars in map rows → columns default to 1fr (proportional)</div>
 				<Ex code="ab abb" desc="a=1fr b=2fr (b appears twice)" />
 				<Ex code="ab aab" desc="a=2fr b=1fr" />
@@ -81,9 +107,10 @@ export default function Docs() {
 				<Ex code='collapsible({ var, area, expanded?, collapsed? })' desc="Toggle area size on click" />
 				<Ex code='accordion({ var, items, collapsed? })' desc="Mutual exclusion — items: [{ area, sizeVar, expanded }]" />
 				<Ex code='tabs({ var, items, position? })' desc='Tab bar — items: [{ label, area, sizeVar? }], position: "top" | "bottom"' />
-				<Ex code='multiColumn({ area, fill? })' desc='Auto-align CSS multi-column to grid tracks the area spans — fill: "auto"|"balance"' />
-				<Ex code='fisheye({ axis?, intensity?, min? })' desc='Tracks expand near cursor, compress away — axis: "x" | "y" | "both"' />
-				<div style={{ color: "#555", marginTop: 8, fontSize: 11 }}>Extension interface: {"{ name, render?, containerStyle?, areaStyle?, transformVars?, transformAreas? }"}</div>
+				<Ex code='multiColumn({ area, fill? })' desc='Auto-align CSS multi-column to grid tracks — fill: "auto"|"balance"' />
+				<Ex code='fisheye({ axis?, intensity?, min? })' desc='Tracks expand near cursor — axis: "x"|"y"|"both". Auto-swaps on transpose.' />
+				<Ex code='render({ container?, cell? })' desc="Custom DOM output — replace container tag and/or cell wrapper elements" />
+				<div style={{ color: "#555", marginTop: 8, fontSize: 11 }}>Extension interface: {"{ name, render?, renderContainer?, wrapCell?, containerStyle?, areaStyle?, transformVars?, transformAreas?, needsAreas? }"}</div>
 			</Section>
 			<Section title="Quick Examples">
 				<Ex code="ab" desc="Two equal columns" />
@@ -94,7 +121,12 @@ export default function Docs() {
 				<Ex code="a(e)B ab* 8 | .#" desc="Form with right-aligned labels" />
 				<Ex code="sa ss Sa* 8 | 120#" desc="Pinned sidebar + repeating list" />
 				<Ex code='abc | 100~# 100~# 100~#' desc="Responsive 3-col with min 100px" />
-				<Ex code='*7 ?wh' desc="7-column auto-flow grid (calendar, data table)" />
+				<Ex code="*7 ?wh" desc="7-column auto-flow grid" />
+				<Ex code="*4 ?whf" desc="4-row auto-flow, column direction (?f)" />
+				<Ex code="*4 ?whF" desc="4-col auto-flow, dense packing (?F)" />
+				<Ex code="*6 | 80 # *" desc="6-col grid, col sizes cycle 80px 1fr" />
+				<Ex code="*3 || 40 80 *" desc="3-col grid, row sizes cycle 40px 80px" />
+				<Ex code="?whcC" desc="Center single child both axes" />
 			</Section>
 		</div>
 		<Section title="Full Grammar & Rules">
@@ -104,48 +136,56 @@ export default function Docs() {
 	transpose    = "|"
 
 	main         = [legend] [map-rows] [gap] [flags]
-				-- (flags float freely among segments)
+				   -- (flags float freely among segments)
 
 	legend       = "*"                              -- auto-legend, single row
-				| "*" digit+                       -- auto-flow grid with N columns
-				| area-def+
+				 | "*" digit+                       -- auto-flow grid with N columns
+				 | "*" pattern                      -- auto-flow with span pattern
+				 | area-def+
 
-	area-def     = letter
-				| LETTER                           -- uppercase = grow
-				| letter "(" modifiers ")"
-				| LETTER "(" modifiers ")"
+	pattern      = (letter digit* | "*" digit*)+    -- e.g. s3c6a3, w2*2
+
+	area-def     = letter | LETTER
+				 | letter "(" modifiers ")"
+				 | LETTER "(" modifiers ")"
 
 	modifiers    = self-mod+
 	self-mod     = "s" | "e" | "c"                  -- justify-self: start/end/center
-				| "S" | "E" | "C"                  -- align-self: start/end/center
+				 | "S" | "E" | "C"                  -- align-self: start/end/center
 
 	map-rows     = map-row+
 	map-row      = cell+
-				| cell+ "*"                         -- repeat row (varargs)
+				 | cell+ "*"                         -- repeat row (varargs)
 
 	cell         = letter                            -- area reference
-				| LETTER                            -- pinned area in repeat row
-				| "."                               -- empty cell
+				 | letter digit+                     -- char-count: h12 = hhhhhhhhhhhh
+				 | LETTER                            -- pinned area in repeat row
+				 | "."                               -- empty cell
 
 	gap          = number                            -- uniform gap (px)
-				| number number                     -- row-gap col-gap (px)
+				 | number number                     -- row-gap col-gap (px)
 
 	flags        = "?" flag-char+
 	flag-char    = "w"                               -- full width
-				| "h"                               -- full height
-				| "s" | "e" | "c" | "b" | "a" | "g"    -- justify-content
-				| "S" | "E" | "C" | "B" | "A" | "G"    -- align-content
+				 | "h"                               -- full height
+				 | "f"                               -- reverse auto-flow (row↔column)
+				 | "F"                               -- dense packing (auto-flow only)
+				 | "s" | "e" | "c" | "b" | "a" | "g"    -- justify-content
+				 | "S" | "E" | "C" | "B" | "A" | "G"    -- align-content
 
-	col-sizes    = size-token+
-	row-sizes    = size-token+
+	col-sizes    = size-token+ ["*"]
+	row-sizes    = size-token+ ["*"]
 
 	size-token   = "."                               -- auto
-				| "#"                               -- 1fr
-				| number                            -- px
-				| size-atom "~" size-atom            -- minmax(a, b)
-				| css-size                           -- literal passthrough
+				 | "#"                               -- 1fr
+				 | number                            -- px
+				 | size-atom "~" size-atom            -- minmax(a, b)
+				 | css-size                           -- literal passthrough
 
 	size-atom    = "." | "#" | number | css-size
+
+	-- trailing "*" in sizes: cycle preceding tokens to fill track count
+	--   "80 # *" with 6 cols → 80px 1fr 80px 1fr 80px 1fr
 
 	number       = digit+ ["." digit+]
 	letter       = "a"-"z"
@@ -157,11 +197,30 @@ export default function Docs() {
 	-- size tokens: "~" binds adjacent tokens (200~# = minmax(200px, 1fr))
 
 	-- implicit rules:
-	--   legend only, no map rows     → legend doubles as single-row map
-	--   empty input + childCount     → "*"
-	--   "|" + empty + childCount     → transposed "*"
-	--   all-numeric segments         → gap only, prepend "*" if childCount > 0
-	--   *N + childCount              → N columns, ceil(childCount/N) rows, positional areas
+	--   legend only, no map rows       → legend doubles as single-row map
+	--   empty input + childCount       → "*"
+	--   "|" + empty + childCount       → transposed "*"
+	--   all-numeric segments           → gap only, prepend "*" if childCount > 0
+	--   *N + childCount                → auto-flow: no grid-template-areas,
+	--                                    uses grid-auto-flow instead
+	--   justify/alignContent flags     → default track size becomes auto (not 1fr)
+	--                                    so centering works as expected
+
+	-- transpose ("|" prefix):
+	--   swaps columns ↔ rows (template areas, sizes, counts)
+	--   swaps justify-self ↔ align-self on all areas
+	--   swaps justifyContent ↔ alignContent in flags
+	--   swaps gapH ↔ gapV
+	--   flips auto-flow direction (row → column)
+	--   fisheye extension auto-swaps its axis
+
+	-- auto-flow details:
+	--   *N generates area names c0, c1, c2, ...
+	--   *pattern generates named areas from pattern letters
+	--   ?f reverses flow direction (row↔column)
+	--   ?F adds dense packing
+	--   extensions with needsAreas force template-areas generation
+	--     so grid-area works for both children and extension elements
 
 	-- var substitution (pre-parser, in Grid component):
 	--   "{" identifier "}" replaced from vars prop before parsing

@@ -60,6 +60,8 @@ let flattenChildren = (children) => {
 let debug = (opts = {}) => ({
 	name: "debug",
 	render: ({ parsed }) => {
+		// in auto-flow mode, overlay divs interfere with auto-placement — skip them
+		if (!parsed.templateAreas) return [];
 		let color = opts.color || "rgba(255,255,255,0.25)";
 		let elements = [];
 		for (let r = 0; r < parsed.rowCount; r++) {
@@ -77,6 +79,11 @@ let debug = (opts = {}) => ({
 		}
 		return elements;
 	},
+	// in auto-flow mode, use outline on children instead (doesn't affect layout)
+	areaStyle: (area, vars) => {
+		let color = opts.color || "rgba(255,255,255,0.25)";
+		return { outline: `1px dashed ${color}`, outlineOffset: "-1px" };
+	},
 });
 
 // --- collapsible: toggle an area between expanded/collapsed ---
@@ -89,6 +96,7 @@ let debug = (opts = {}) => ({
 // - handle: "start" | "end" | "top" | "bottom" — where the toggle renders
 let collapsible = (opts) => ({
 	name: "collapsible",
+	needsAreas: true,
 	render: ({ parsed, vars, setVar, containerRef }) => {
 		let { var: varName, expanded = 250, collapsed = 0, area, handle = "end" } = opts;
 		let isCollapsed = (vars[varName] ?? expanded) <= collapsed;
@@ -132,6 +140,7 @@ let collapsible = (opts) => ({
 // the var holds the currently expanded area name (or null for all collapsed)
 let accordion = (opts) => ({
 	name: "accordion",
+	needsAreas: true,
 	render: ({ parsed, vars, setVar }) => {
 		let { var: varName, items, collapsed = 0 } = opts;
 		let activeArea = vars[varName] ?? null;
@@ -187,6 +196,7 @@ let accordion = (opts) => ({
 // - min/max: pixel constraints
 let splitPane = (opts) => ({
 	name: "splitPane",
+	needsAreas: true,
 	render: ({ parsed, vars, setVar, containerRef }) => {
 		let { var: varName, edge, axis: axisOpt, min = 0, max = 9999, handleSize = 6 } = opts;
 
@@ -268,6 +278,7 @@ let splitPane = (opts) => ({
 // axis: "both" (default) | "x" | "y"
 let scrollable = (opts) => ({
 	name: "scrollable",
+	needsAreas: true,
 	render: ({ parsed }) => {
 		let areas = Array.isArray(opts.area) ? opts.area : [opts.area];
 		let axis = opts.axis || "both";
@@ -296,6 +307,7 @@ let scrollable = (opts) => ({
 // optionally adds a backdrop blur
 let overlay = (opts) => ({
 	name: "overlay",
+	needsAreas: true,
 	areaStyle: (area, vars) => {
 		if (area !== opts.area) return null;
 		// override grid-area with explicit row/col matching the "over" target
@@ -312,19 +324,22 @@ let overlay = (opts) => ({
 	// the key trick: remap the area in the parsed result so it covers the "over" area's cells
 	transformAreas: (parsed) => {
 		if (!opts.over) return parsed;
+		let map = parsed.areaNameMap || {};
+		let overName = map[opts.over] || opts.over;
+		let areaName = map[opts.area] || opts.area;
 		// find bounding box of "over" area in templateAreas
 		let rows = parsed.templateAreas.map(r => r.replace(/"/g, "").trim().split(/\s+/));
 		let minR = Infinity, maxR = -1, minC = Infinity, maxC = -1;
 		for (let r = 0; r < rows.length; r++) {
 			for (let c = 0; c < rows[r].length; c++) {
-				if (rows[r][c] === opts.over) {
+				if (rows[r][c] === overName) {
 					minR = Math.min(minR, r); maxR = Math.max(maxR, r);
 					minC = Math.min(minC, c); maxC = Math.max(maxC, c);
 				}
 			}
 		}
 		if (minR > maxR) return parsed; // "over" area not found
-		return { ...parsed, _overlayPositions: { ...parsed._overlayPositions, [opts.area]: { row: `${minR+1}/${maxR+2}`, col: `${minC+1}/${maxC+2}` } } };
+		return { ...parsed, _overlayPositions: { ...parsed._overlayPositions, [areaName]: { row: `${minR+1}/${maxR+2}`, col: `${minC+1}/${maxC+2}` } } };
 	},
 });
 
@@ -345,8 +360,10 @@ let animate = (opts = {}) => ({
 // reads computed grid column widths and sets column-width/column-gap to match
 let multiColumn = (opts) => ({
 	name: "multiColumn",
+	needsAreas: true,
 	render: ({ containerRef, parsed }) => {
-		let area = opts.area;
+		let map = parsed.areaNameMap || {};
+		let area = map[opts.area] || opts.area;
 		// find which grid columns this area spans
 		let rows = parsed.templateAreas.map(r => r.replace(/"/g, "").trim().split(/\s+/));
 		let minC = Infinity, maxC = -1;
@@ -421,6 +438,9 @@ let FisheyeEffect = ({ containerRef, parsed, axis, intensity, minFr, stickyMode 
 		let rowSizes = parsed.rowSizes;
 		let colFlex = colSizes.map(s => s.includes("fr"));
 		let rowFlex = rowSizes.map(s => s.includes("fr"));
+		// if no flex tracks on an axis, treat auto tracks as flexible (otherwise fisheye is a no-op)
+		if (!colFlex.some(Boolean)) colFlex = colSizes.map(s => s === "auto");
+		if (!rowFlex.some(Boolean)) rowFlex = rowSizes.map(s => s === "auto");
 		let flexColCount = colFlex.filter(Boolean).length;
 		let flexRowCount = rowFlex.filter(Boolean).length;
 
@@ -447,26 +467,42 @@ let FisheyeEffect = ({ containerRef, parsed, axis, intensity, minFr, stickyMode 
 			origSizes.map((s, i) => flexMask[i] ? frs[i].toFixed(4) + "fr" : s).join(" ");
 
 		let applyScales = (colFrs, rowFrs) => {
-			let colCount = parsed.colCount;
-			for (let child of container.children) {
-				let cs = getComputedStyle(child);
-				let col = parseInt(cs.gridColumnStart);
-				let row = parseInt(cs.gridRowStart);
-				// fallback for named areas: extract index from gridArea like "c15"
-				if (isNaN(col) || isNaN(row)) {
-					let area = (child.style.gridArea || "").trim();
-					let match = area.match(/^c(\d+)$/);
-					if (match) {
-						let idx = parseInt(match[1]);
-						col = (idx % colCount) + 1;
-						row = Math.floor(idx / colCount) + 1;
+			// pre-build area→position lookup from templateAreas
+			let areaPos = {};
+			if (parsed.templateAreas) {
+				for (let r = 0; r < parsed.templateAreas.length; r++) {
+					let cells = parsed.templateAreas[r].replace(/"/g, "").trim().split(/\s+/);
+					for (let c = 0; c < cells.length; c++) {
+						if (cells[c] !== "." && !areaPos[cells[c]]) areaPos[cells[c]] = { col: c + 1, row: r + 1 };
 					}
 				}
-				let sx = !isNaN(col) && col > 0 && col <= colFrs.length ? colFrs[col - 1] : 1;
-				let sy = !isNaN(row) && row > 0 && row <= rowFrs.length ? rowFrs[row - 1] : 1;
+			}
+			let childIdx = 0;
+			for (let child of container.children) {
+				let col = NaN, row = NaN;
+				// try getComputedStyle first (works for explicit grid-column/row)
+				let cs = getComputedStyle(child);
+				col = parseInt(cs.gridColumnStart);
+				row = parseInt(cs.gridRowStart);
+				// fallback: resolve from grid-area name via templateAreas
+				if (isNaN(col) || isNaN(row)) {
+					// gridArea serializes as "name / name / name / name" — extract first token
+					let raw = child.style.gridArea || cs.gridArea || "";
+					let area = raw.split("/")[0].trim();
+					let pos = areaPos[area];
+					if (pos) { col = pos.col; row = pos.row; }
+				}
+				// fallback: compute from child index (auto-flow)
+				if (isNaN(col) || isNaN(row)) {
+					col = (childIdx % parsed.colCount) + 1;
+					row = Math.floor(childIdx / parsed.colCount) + 1;
+				}
+				let sx = col > 0 && col <= colFrs.length ? colFrs[col - 1] : 1;
+				let sy = row > 0 && row <= rowFrs.length ? rowFrs[row - 1] : 1;
 				child.style.setProperty("--fe-scale", Math.min(sx, sy).toFixed(3));
 				child.style.setProperty("--fe-scale-x", sx.toFixed(3));
 				child.style.setProperty("--fe-scale-y", sy.toFixed(3));
+				childIdx++;
 			}
 		};
 
@@ -514,6 +550,8 @@ let fisheye = (opts = {}) => ({
 	name: "fisheye",
 	render: ({ containerRef, parsed }) => {
 		let { axis = "x", intensity = 0.6, min: minFr = 0.15, sticky: stickyMode = false } = opts;
+		// swap axis when layout is transposed so fisheye follows the content direction
+		if (parsed.transpose && axis !== "both") axis = axis === "x" ? "y" : "x";
 		return [<FisheyeEffect key="fisheye" containerRef={containerRef} parsed={parsed}
 			axis={axis} intensity={intensity} minFr={minFr} stickyMode={stickyMode} />];
 	},
@@ -632,10 +670,63 @@ let Grid = ({ layout, col, gap, breaks, xs, sm, md, lg, xl,
 		activeLayout = activeLayout.replace(/\{(\w+)\}/g, (_, k) => effectiveVars[k] ?? "");
 
 	// parse
-	let parsed = React.useMemo(
+	let parsedRaw = React.useMemo(
 		() => parseGridLayout(activeLayout, childCount),
 		[activeLayout, childCount],
 	);
+
+	// --- auto-flow → named areas when extensions need it ---
+	// if any extension declares needsAreas and the layout is auto-flow,
+	// generate synthetic templateAreas so gridArea works for both children and extension elements
+	let parsed = React.useMemo(() => {
+		if (parsedRaw.error) return parsedRaw;
+		if (!parsedRaw.autoFlow || !extensions.some(e => e.needsAreas)) return parsedRaw;
+
+		let { areas, colCount, rowCount, childSpans, transpose: tp, flags } = parsedRaw;
+		let grid = Array.from({ length: rowCount }, () => Array(colCount).fill("."));
+
+		// generate unique area names per child
+		let uniqueAreas = areas.map((a, i) => "c" + i);
+
+		// determine effective flow direction (must match what gridAutoFlow would be)
+		let colFlow = tp ? !flags.flowReverse : flags.flowReverse;
+
+		// place each child into the grid, respecting spans and flow direction
+		let r = 0, c = 0;
+		for (let i = 0; i < uniqueAreas.length; i++) {
+			let span = childSpans?.[i]?.span || 1;
+			if (colFlow) {
+				// column flow: advance down rows, then next column
+				if (r + span > rowCount) { c++; r = 0; }
+				if (c >= colCount) break;
+				for (let s = 0; s < span; s++) {
+					if (r + s < rowCount) grid[r + s][c] = uniqueAreas[i];
+				}
+				r += span;
+				if (r >= rowCount) { r = 0; c++; }
+			} else {
+				// row flow: advance across columns, then next row
+				if (c + span > colCount) { r++; c = 0; }
+				if (r >= rowCount) break;
+				for (let s = 0; s < span; s++) {
+					if (c + s < colCount) grid[r][c + s] = uniqueAreas[i];
+				}
+				c += span;
+				if (c >= colCount) { r++; c = 0; }
+			}
+		}
+
+		let templateAreas = grid.map(row => '"' + row.join(" ") + '"');
+
+		// build a lookup from original area names to the first matching unique name
+		// so extensions using gridArea: "s" can resolve to the right cell
+		let areaNameMap = {};
+		for (let i = 0; i < areas.length; i++) {
+			if (!areaNameMap[areas[i]]) areaNameMap[areas[i]] = uniqueAreas[i];
+		}
+
+		return { ...parsedRaw, areas: uniqueAreas, originalAreas: areas, templateAreas, areaNameMap };
+	}, [parsedRaw, extensions]);
 
 	if (parsed.error) {
 		console.warn("Grid layout error:", parsed.error);
@@ -665,14 +756,18 @@ let Grid = ({ layout, col, gap, breaks, xs, sm, md, lg, xl,
 
 	// assign children to areas
 	let i = 0;
-	let mappedChildren = childArray.map(child => {
+	let mappedChildren = childArray.map((child,childIdx) => {
 		if (i >= parsed.areas.length) return child; // overflow children render without grid-area
 		let area = parsed.areas[i];
-		if (!parsed.templateAreas.some(t => t.includes(area))) { i++; return null; }
-		let areaStyle = toAreaStyle(parsed, area);
+		let origArea = parsed.originalAreas ? parsed.originalAreas[i] : area;
+		if (parsed.templateAreas && !parsed.templateAreas.some(t => t.includes(area))) {
+			i++;
+			return null;
+		}
+		let areaStyle = toAreaStyle(parsed, area, childIdx);
 
 		// apply overlay position overrides (replaces grid-area with explicit row/col)
-		let ovPos = overlayPositions[area];
+		let ovPos = overlayPositions[origArea] || overlayPositions[area];
 		if (ovPos) {
 			delete areaStyle.gridArea;
 			areaStyle.gridRow = ovPos.row;
@@ -680,10 +775,10 @@ let Grid = ({ layout, col, gap, breaks, xs, sm, md, lg, xl,
 			areaStyle.zIndex = 500;
 		}
 
-		// apply extension area styles
+		// apply extension area styles — pass original area name so extensions match their config
 		for (let ext of extensions) {
 			if (ext.areaStyle) {
-				let extStyle = ext.areaStyle(area, effectiveVars);
+				let extStyle = ext.areaStyle(origArea, effectiveVars);
 				if (extStyle) {
 					// filter out internal markers
 					let clean = {};
@@ -692,6 +787,13 @@ let Grid = ({ layout, col, gap, breaks, xs, sm, md, lg, xl,
 				}
 			}
 		}
+		// find cell wrapper from extensions
+		let cellWrapper = null;
+		for (let ext of extensions) {
+			if (ext.wrapCell) { cellWrapper = ext.wrapCell; break; }
+		}
+
+		if (cellWrapper) return cellWrapper(child, areaStyle, area + "-" + i++, childIdx, parsed);
 		return isArea(child) ? <div key={area + "-" + i++} style={areaStyle}>{child}</div> : child;
 	});
 
@@ -699,12 +801,39 @@ let Grid = ({ layout, col, gap, breaks, xs, sm, md, lg, xl,
 	let extCtx = { parsed, vars: effectiveVars, setVar, containerRef };
 	let extensionElements = extensions.flatMap(ext => ext.render ? ext.render(extCtx) : []);
 
-	return <div ref={containerRef} className={className} style={containerStyle} {...rest}>
-		{mappedChildren}
-		{extensionElements}
+	// remap gridArea in extension elements when auto-flow was converted to named areas
+	let areaNameMap = parsed.areaNameMap;
+	if (areaNameMap) {
+		extensionElements = extensionElements.map(el => {
+			if (!el?.props?.style?.gridArea) return el;
+			let mapped = areaNameMap[el.props.style.gridArea];
+			if (!mapped) return el;
+			return React.cloneElement(el, { style: { ...el.props.style, gridArea: mapped } });
+		});
+	}
+
+	// renderContainer hook — lets an extension take full control of the DOM tree
+	let allChildren = [...mappedChildren, ...extensionElements];
+	let containerProps = { ref: containerRef, className, style: containerStyle, ...rest };
+	for (let ext of extensions) {
+		if (ext.renderContainer) return ext.renderContainer({ props: containerProps, children: allChildren, parsed });
+	}
+
+	return <div {...containerProps}>
+		{allChildren}
 	</div>
 };
 
 export default Grid;
+
+// --- render extension: custom DOM output ---
+// opts.container  — renderContainer({ props, children, parsed }) => element
+// opts.cell       — wrapCell(child, areaStyle, key, childIdx, parsed) => element
+let render = (opts) => ({
+	name: "render",
+	...(opts.container && { renderContainer: opts.container }),
+	...(opts.cell && { wrapCell: opts.cell }),
+});
+
 export { Grid, DefaultBreaks, useContainerWidth, debug,
-	collapsible, accordion, splitPane, scrollable, overlay, animate, tabs, multiColumn, fisheye };
+	collapsible, accordion, splitPane, scrollable, overlay, animate, tabs, multiColumn, fisheye, render };

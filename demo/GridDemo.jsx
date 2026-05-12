@@ -1,5 +1,5 @@
 import React from "react";
-import { Grid, debug, accordion, collapsible, splitPane, scrollable, animate, overlay, tabs, multiColumn, fisheye } from "../src/Grid.jsx";
+import { Grid, debug, debug2, accordion, collapsible, splitPane, scrollable, animate, overlay, tabs, multiColumn, fisheye, render } from "../src/Grid.jsx";
 import { parseGridLayout, toGridStyle } from "../src/grid-layout-dsl.js";
 
 let Style = ({ children }) => <style>{children}</style>
@@ -138,7 +138,7 @@ let presets = [
 		children: (v) => [<Box key="s" c={1}>{(v.sb||0) > 0 ? "Sidebar" : ""}</Box>, <Box key="c" c={2}>Content</Box>],
 		info: "Click arrow",
 		src: 'collapsible({ var: "sb", area: "s", expanded: 200, collapsed: 0 })' },
-	{ cat: "Extensions", name: "Accordion", layout: "| 8 | {a} {b} {c}", w: 400, h: 300, vars: { active: "a", a: "#", b: ".", c: "." },
+	{ cat: "Extensions", name: "Accordion", layout: "| abc 8 | {a} {b} {c}", w: 400, h: 300, vars: { active: "a", a: "#", b: ".", c: "." },
 		ext: () => [accordion({ var: "active", collapsed: ".", items: [{ area: "a", sizeVar: "a", expanded: "#" }, { area: "b", sizeVar: "b", expanded: "#" }, { area: "c", sizeVar: "c", expanded: "#" }] })],
 		children: () => boxes(["Section A", "Section B", "Section C"]), info: "Click headers" },
 	{ cat: "Extensions", name: "Scrollable", layout: "hscf hhh scc sff 8 | {sb}# | 40#40", w: 500, h: 350, vars: { sb: 200 },
@@ -166,7 +166,7 @@ let presets = [
 		params: [{ key: "sb", label: "sidebar", type: "range", min: 100, max: 350, def: 200 }, { key: "g", label: "gap", type: "range", min: 0, max: 20, def: 8 }, { key: "fill", label: "col-fill", type: "toggle", on: "balance", off: "auto" }] },
 
 	// --- fisheye ---
-	{ cat: "Fisheye", name: "Calendar 2D", layout: "*7 ?wh | ####### | 30#####", w: 280, h: 220,
+	{ cat: "Fisheye", name: "Calendar 2D", layout: "*7 ?wh || 30", w: 280, h: 220,
 		ext: (v, p) => [fisheye({ axis: p?.axis || "both", intensity: (p?.intensity || 60) / 100, min: (p?.minFr || 15) / 100 })],
 		children: calendarCells, gridStyle: { cursor: "crosshair" },
 		params: [{ key: "intensity", label: "intensity", type: "range", min: 10, max: 95, def: 60 }, { key: "minFr", label: "min fr%", type: "range", min: 5, max: 50, def: 15 }] },
@@ -178,6 +178,163 @@ let presets = [
 			</div>),
 		gridStyle: { cursor: "crosshair" },
 		params: [{ key: "intensity", label: "intensity", type: "range", min: 10, max: 95, def: 60 }, { key: "minFr", label: "min fr%", type: "range", min: 5, max: 50, def: 15 }] },
+
+	// --- auto-flow ---
+	{ cat: "Auto-Flow", name: "Basic Grid", layout: "*4 4 ?wh", w: 400, h: 200,
+		children: (v, p) => { let n = p?.n || 8; return Array.from({ length: n }, (_, i) => <Box key={i} c={i}>{i + 1}</Box>); },
+		params: [{ key: "n", label: "children", type: "range", min: 1, max: 16, def: 8 }],
+		info: "Auto-flow grid, 4 columns",
+		src: '<Grid layout="*4 4 ?wh">\n  {items.map(i => <Card/>)}\n</Grid>' },
+	{ cat: "Auto-Flow", name: "Column Flow", layout: "*3 4 ?whf", w: 400, h: 250,
+		children: (v, p) => { let n = p?.n || 9; return Array.from({ length: n }, (_, i) => <Box key={i} c={i}>{i + 1}</Box>); },
+		params: [{ key: "n", label: "children", type: "range", min: 1, max: 12, def: 9 }],
+		info: "?f reverses flow: fills top?bottom, left?right",
+		src: '<Grid layout="*3 4 ?whf">\n  {items}\n</Grid>' },
+	{ cat: "Auto-Flow", name: "Dense Packing", layout: "*4 4 ?wF", w: 450, h: 280,
+		children: () => {
+			// use span pattern children: some span 2, leaving gaps that dense backfills
+			let spans = [2, 1, 2, 1, 1, 2, 1, 1, 1, 2];
+			return spans.map((sp, i) => {
+				let wide = sp > 1;
+				return <div key={i} style={{
+					background: wide ? "#3a1e5f" : `hsl(${i * 35 + 180}, 35%, 22%)`,
+					border: `1px solid ${wide ? "#5a2a8f" : `hsl(${i * 35 + 180}, 25%, 32%)`}`,
+					borderRadius: 6, padding: "8px 12px", fontSize: 11, fontWeight: 600,
+					color: wide ? "#c792ea" : `hsl(${i * 35 + 180}, 50%, 70%)`,
+					display: "flex", alignItems: "center", justifyContent: "center",
+				}}>{wide ? `Wide ${i + 1}` : i + 1}</div>;
+			});
+		},
+		// override childSpans via a custom ext that sets grid-column on the wrapper
+		ext: () => [{
+			name: "_denseSpans",
+			areaStyle: (area) => {
+				let idx = parseInt(area.replace("c", ""));
+				let spans = [2, 1, 2, 1, 1, 2, 1, 1, 1, 2];
+				let sp = spans[idx];
+				return sp > 1 ? { gridColumn: "span " + sp } : null;
+		},
+		}],
+		info: "?F = dense — backfills gaps left by wide items. Remove ?F to see gaps.",
+		src: '<Grid layout="*4 4 ?whF">\n  // wide items span 2 cols, dense backfills gaps\n</Grid>' },
+	{ cat: "Auto-Flow", name: "Transpose |*N", layout: "|*3 4 ?wh", w: 400, h: 250,
+		children: (v, p) => { let n = p?.n || 9; return Array.from({ length: n }, (_, i) => <Box key={i} c={i}>{i + 1}</Box>); },
+		params: [{ key: "n", label: "children", type: "range", min: 1, max: 12, def: 9 }],
+		info: "| transposes: 3 rows, children flow as columns",
+		src: '<Grid layout="|*3 4 ?wh">\n  {items}\n</Grid>' },
+	{ cat: "Auto-Flow", name: "Size Repeat *", layout: "*6 4 ?wh | 80 # *", w: 500, h: 200,
+		children: (v, p) => { let n = p?.n || 12; return Array.from({ length: n }, (_, i) => <Box key={i} c={i}>{i + 1}</Box>); },
+		params: [{ key: "n", label: "children", type: "range", min: 1, max: 18, def: 12 }],
+		info: "Trailing * cycles col sizes: 80px # 80px # 80px #",
+		src: '<Grid layout="*6 4 ?wh | 80 # *">\n  {items}\n</Grid>' },
+	{ cat: "Auto-Flow", name: "Alternating Rows", layout: "*3 4 ?wh || 40 80 *", w: 400, h: 280,
+		children: (v, p) => { let n = p?.n || 12; return Array.from({ length: n }, (_, i) => <Box key={i} c={i}>{i + 1}</Box>); },
+		params: [{ key: "n", label: "children", type: "range", min: 1, max: 18, def: 12 }],
+		info: "Row sizes cycle: 40px 80px 40px 80px ...",
+		src: '<Grid layout="*3 4 ?wh || 40 80 *">\n  {items}\n</Grid>' },
+	{ cat: "Auto-Flow", name: "Dashboard Grid", layout: "*4 6 ?whC | .*", w: 500, h: 300,
+		ext: () => [{
+			name: "_dashSpans",
+			areaStyle: (area) => {
+				let idx = parseInt(area.replace("c", ""));
+				// first row: 2 wide cards, second row: 4 narrow, third row: 1 full-width + 3
+				let spans = [2, 2, 1, 1, 1, 1, 4, 1, 1, 1];
+				let sp = spans[idx];
+				return sp > 1 ? { gridColumn: "span " + sp } : null;
+			},
+		}],
+		children: () => {
+			let labels = ["Revenue", "Users", "CPU", "Memory", "Disk", "Net", "Activity Log", "Alerts", "Tasks", "Deploy"];
+			return labels.map((l, i) => {
+				let hue = [200, 260, 150, 35, 350, 180, 220, 0, 280, 120][i];
+			return <div key={i} style={{
+					background: `hsl(${hue}, 30%, 16%)`, border: `1px solid hsl(${hue}, 20%, 28%)`,
+					borderRadius: 6, padding: 10, fontSize: 11, fontWeight: 600,
+					color: `hsl(${hue}, 50%, 65%)`, display: "flex", alignItems: "center", justifyContent: "center",
+				}}>{l}</div>;
+			});
+		},
+		info: "Mixed-span dashboard — wide cards via areaStyle extension" },
+	{ cat: "Auto-Flow", name: "Scrollable Grid", layout: "*3 8 ?wh", w: 400, h: 250,
+		ext: () => [scrollable({ area: ["c0", "c1", "c2", "c3", "c4", "c5"] })],
+		children: () => Array.from({ length: 6 }, (_, i) =>
+			<div key={i} style={{ background: `hsl(${i * 50 + 200}, 30%, 18%)`, border: `1px solid hsl(${i * 50 + 200}, 20%, 30%)`, borderRadius: 6, padding: 8, fontSize: 11, color: `hsl(${i * 50 + 200}, 50%, 65%)`, overflow: "auto" }}>
+				<div style={{ fontWeight: 700, marginBottom: 4 }}>Panel {i + 1}</div>
+				{loremItems(6)}
+			</div>),
+		info: "Auto-flow + scrollable extension (needsAreas)",
+		src: '<Grid layout="*3 8 ?wh"\n  extensions={[scrollable({ area: ["c0","c1",...] })]}>\n  {panels}\n</Grid>' },
+
+	// --- render ---
+	{ cat: "Render", name: "Scrollable Table", layout: "*5 ?wh", w: 550, h: 300,
+		ext: () => {
+			let sg = { display: "grid", gridTemplateColumns: "subgrid", gridColumn: "1 / -1" };
+			return [render({
+				cell: (child, style, key) => <td key={key} style={style}>{child}</td>,
+				container: ({ props, children, parsed }) => {
+					let n = parsed.colCount;
+					let cells = children.filter(c => c != null);
+					let head = cells.slice(0, n);
+					let body = cells.slice(n);
+					let bodyRows = [];
+					for (let i = 0; i < body.length; i += n) bodyRows.push(body.slice(i, i + n));
+					return <table {...props} style={{ ...props.style, gridTemplateRows: "32px 1fr" }}>
+						<thead style={sg}><tr style={sg}>{head}</tr></thead>
+						<tbody style={{ ...sg, overflow: "auto", minHeight: 0, alignContent: "start" }}>
+							{bodyRows.map((row, i) => <tr key={i} style={sg}>{row}</tr>)}
+						</tbody>
+					</table>;
+				},
+			})];
+		},
+		children: (v, p) => {
+			let cols = ["Name", "Role", "Dept", "Status", "Score"];
+			let data = [
+				["Alice", "Engineer", "Platform", "Active", "94"],
+				["Bob", "Designer", "Product", "Active", "87"],
+				["Carol", "PM", "Growth", "On Leave", "91"],
+				["Dave", "Engineer", "Infra", "Active", "88"],
+				["Eve", "Analyst", "Data", "Active", "95"],
+				["Frank", "Engineer", "Platform", "Active", "82"],
+				["Grace", "Designer", "Brand", "Active", "90"],
+				["Hank", "PM", "Core", "Inactive", "76"],
+				["Iris", "Engineer", "Mobile", "Active", "93"],
+				["Jack", "Analyst", "Data", "On Leave", "85"],
+			];
+			let n = p?.rows || 10;
+			let hdr = cols.map((c, i) => <span key={"h" + i} style={{ fontWeight: 700, color: "#7fdbca", fontSize: 11, padding: "6px 10px", background: "#16213e", borderBottom: "2px solid #2a4a6a", whiteSpace: "nowrap" }}>{c}</span>);
+			let rows = data.slice(0, n).flatMap((row, r) =>
+				row.map((cell, c) => <span key={`r${r}c${c}`} style={{ padding: "4px", fontSize: 11, color: "#999", borderBottom: "1px solid #1a1a2e", whiteSpace: "nowrap", background: r % 2 ? "#111122" : "transparent" }}>{cell}</span>)
+			);
+			return [...hdr, ...rows];
+		},
+		params: [{ key: "rows", label: "rows", type: "range", min: 2, max: 10, def: 10 }],
+		gridStyle: { borderCollapse: "collapse", tableLayout: "fixed" },
+		info: "table/thead/tbody/tr/td — tbody scrolls, header stays synced via subgrid",
+		src: 'render({\n  cell: (child, style, key) => <td ...>,\n  container: ({ props, children, parsed }) => {\n    // split children into head/body rows\n    return <table><thead>...</thead>\n      <tbody style={{overflow:"auto"}}>...</tbody>\n    </table>\n  }\n})' },
+	{ cat: "Render", name: "Definition List", layout: "*2 4 ?w | .#", w: 400,
+		ext: () => [render({
+			cell: (child, style, key, idx, parsed) => {
+				let Tag = idx % parsed.colCount === 0 ? "dt" : "dd";
+				return <Tag key={key} style={style}>{child}</Tag>;
+			},
+			container: ({ props, children }) => <dl {...props}>{children}</dl>,
+		})],
+		children: () => {
+			let items = [
+				["gridpack", "CSS Grid layout DSL for React"],
+				["layout", "Compact string describing grid areas"],
+				["extension", "Composable behavioral plugin"],
+				["auto-flow", "Automatic child placement in a grid"],
+				["transpose", "Swap columns and rows with | prefix"],
+			];
+			return items.flatMap(([term, def], i) => [
+				<span key={"t" + i} style={{ fontWeight: 700, color: "#c792ea", fontSize: 12, padding: "4px 0" }}>{term}</span>,
+				<span key={"d" + i} style={{ color: "#888", fontSize: 12, padding: "4px 0" }}>{def}</span>,
+			]);
+		},
+		info: "dl/dt/dd — cell callback picks tag based on column index",
+		src: 'render({\n  cell: (child, style, key, idx, parsed) =>\n    idx % parsed.colCount===0\n      ? <dt ...> : <dd ...>,\n  container: ({props, children}) =>\n    <dl {...props}>{children}</dl>\n})' },
 ];
 
 // ============================================================
@@ -245,8 +402,8 @@ let Playground = () => {
 			.pg-pre:hover { color: #ccc; background: #ffffff08; }
 			.pg-pre.act { color: #7fdbca; border-color: #7fdbca40; background: #7fdbca10; }
 			.pg-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
-			.pg-row label { font-size: 10px; color: #555; min-width: 55px; }
-			.pg-chk { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #9cc; cursor: pointer; }
+			.pg-row label { font-size: 12px; color: #9cc; min-width: 55px; }
+			.pg-chk { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #9cc; cursor: pointer; }
 			.pg-chk input { accent-color: #7fdbca; }
 			.pg-dbg { background: #0f0f23; border: 1px solid #2a2a4a; border-radius: 4px; padding: 8px; font-size: 11px; line-height: 1.6; overflow: auto; }
 			.pg-dbg .k { color: #c792ea; } .pg-dbg .v { color: #c3e88d; }
@@ -268,7 +425,7 @@ let Playground = () => {
 							setParams({ ...params, [pm.key]: val });
 							if (vars[pm.key] != null) setVars({ ...vars, [pm.key]: val });
 						}} style={{ flex: 1 }} />
-						<span style={{ fontSize: 10, color: "#f78c6c", minWidth: 20 }}>{params[pm.key] ?? pm.def}</span>
+						<span style={{ fontSize: 10, color: "#9cc", minWidth: 20 }}>{params[pm.key] ?? pm.def}</span>
 					</>}
 					{pm.type === "toggle" && <label className="pg-chk">
 						<input type="checkbox" checked={params[pm.key]==pm.on} onChange={e => {
@@ -320,7 +477,7 @@ let Playground = () => {
 						: <>
 							{parsed.expanded && <div><span className="k">expanded: </span><span className="v">{parsed.areas.join(" ")}</span></div>}
 							{parsed.repeatInfo && <div><span className="k">repeat: </span><span className="v">[{parsed.repeatInfo.pattern}] ×{parsed.repeatInfo.count}{parsed.repeatInfo.pinned?.length ? ` pinned [${parsed.repeatInfo.pinned}]` : ""}</span></div>}
-							<div><span className="k">areas: </span><span className="v">{parsed.templateAreas.join(" ")}</span></div>
+							{parsed.templateAreas && <div><span className="k">areas: </span><span className="v">{parsed.templateAreas.join(" ")}</span></div>}
 							<div><span className="k">cols: </span><span className="v">{parsed.colSizes.join(" ")}</span></div>
 							<div><span className="k">rows: </span><span className="v">{parsed.rowSizes.join(" ")}</span></div>
 							{parsed.gapH != null && <div><span className="k">gap: </span><span className="v">{parsed.gapH === parsed.gapV ? parsed.gapH + "px" : parsed.gapH + "px " + parsed.gapV + "px"}</span></div>}
@@ -379,13 +536,13 @@ export default function App() {
 			.c6 { background: #1e5f5f; color: #80cbc4; border: 1px solid #2a8f8f; }
 			.c7 { background: #5f5f1e; color: #ffeb3b; border: 1px solid #8f8f2a; }
 		`}</Style>
-		<div style={{ padding: "8px", background: "#16213e", borderBottom: "1px solid #2a2a4a", display: "flex", alignItems: "center", gap: 8 }}>
-			<svg width="24" height="24" viewBox="0 0 56 56"><path fill="#7fdbca" d=
+		<div style={{ padding: "12px", background: "#16213e", borderBottom: "1px solid #2a2a4a", display: "flex", alignItems: "center", gap: 8 }}>
+			<svg width="28" height="28" viewBox="0 0 56 56"><path fill="#7fdbca" d=
 				"m41.266 19.117l8.812-5.015c-.352-.352-.774-.633-1.289-.915l-16.523-9.42C30.813 2.946 29.406 2.5 28 2.5s-2.812.445-4.266 1.266L18.977 6.46ZM28 26.641l10.008-5.672l-22.195-12.68l-8.602 4.899c-.516.28-.937.562-1.29.914ZM29.594 53.5c.164-.047.304-.117.469-.21l18.351-10.454c2.18-1.242 3.375-2.508 3.375-5.906V18.672c0-.703-.07-1.266-.187-1.781L29.594 29.453Zm-3.188 0V29.453L4.4 16.891a7.8 7.8 0 0 0-.188 1.78V36.93c0 3.398 1.195 4.664 3.375 5.906l18.352 10.453c.164.094.304.164.468.211"
 			/></svg>
-			<span style={{ fontSize: 14, fontWeight: 700, color: "#7fdbca", marginRight: 8 }}>gridpack</span>
+			<span style={{ fontSize: 18, fontWeight: 700, color: "#7fdbca", marginRight: 8 }}>gridpack</span>
 			{tabList.map(([name,tabId]) =>
-				<button key={name} onClick={() => setTab(tabId)} style={{ background: "none", border: "none", color: tab==tabId ? "#7fdbca" : "#476", fontFamily: "inherit", fontSize: 11, cursor: "pointer", borderBottom: tab==tabId ? "2px solid #7fdbca" : "2px solid transparent", padding: "4px 8px" }}>{name}</button>
+				<button key={name} onClick={() => setTab(tabId)} style={{ background: "none", border: "none", color: tab==tabId ? "#7fdbca" : "#476", fontFamily: "inherit", fontSize: 14, cursor: "pointer", borderBottom: tab==tabId ? "2px solid #7fdbca" : "2px solid transparent", padding: "4px 8px" }}>{name}</button>
 			)}
 		</div>
 		{tab=="landing" && <LandingPage onNavigate={setTab} />}
