@@ -50,13 +50,16 @@ Everything fits in one prop. The string has a simple grammar:
 | `ab` | Two equal columns |
 | `\|ab` | Two equal rows (transpose) |
 | `ab abb` | Two columns, 1:2 ratio |
+| `ab a2b3` | Two columns, 2:3 ratio (char-count shorthand) |
 | `hsCf hhh scc sff 8` | Holy grail, 8px gap, content grows |
+| `ab ab \| 100 #` | Two columns: 100px fixed + fill remaining |
 | `* 8` | Auto h-stack with gap (needs children) |
 | `\| 12` | Auto v-stack with 12px gap |
 | `*7 ?wh` | 7-column auto-flow grid |
 | `a(e)B ab* 8 \| .#` | Form: labels right-aligned, inputs grow, repeat rows |
-| `sa ss Sa* 8 \| 120#` | Pinned sidebar + repeating list |
+| `sah sh Sa* 8 | {sw}# | 50` | Pinned sidebar + header, repeating items |
 | `abc \| 100~# 100~# 100~#` | 3 columns, each min 100px |
+| `abcdef \| 50 # *` | 6 columns, sizes cycle: 50px 1fr 50px 1fr ... |
 
 ### Token vocabulary
 
@@ -68,10 +71,11 @@ Everything fits in one prop. The string has a simple grammar:
 | `#` | `1fr` (in sizes) |
 | `\|` | Transpose prefix / pipe separator |
 | `~` | `minmax(a, b)` — e.g. `200~#` |
-| `*` | Auto-legend / repeat row |
+| `*` | Auto-legend / repeat row / size cycling |
 | `?` | Flags (`?w` width, `?h` height, `?cC` center) |
 | `( )` | Per-area alignment — `a(cC)` centers area `a` |
 | `{ }` | Template variable — `{sidebar}` |
+| `0-9` | After area letter: repeat count (`h12` = 12 h's) |
 
 ### Flags — SECBAG
 
@@ -79,6 +83,25 @@ Lowercase = `justify-content`, uppercase = `align-content`:
 
 - **S** start · **E** end · **C** center · **B** space-between · **A** space-around · **G** space-evenly
 - `?w` / `?h` — force full width / height
+- `?f` — reverse auto-flow direction (row → column)
+- `?F` — dense packing (`grid-auto-flow: dense`)
+
+### Sizes and auto-fill
+
+When you write explicit `#` (1fr) in the pipe sizes section, the grid automatically fills its container — no `?w` needed. Proportional sizing from repeated area characters (like `ab abb`) keeps the grid content-sized.
+
+```jsx
+// 100px + fill remaining — grid auto-fills container width
+<Grid layout="ab ab | 100 #">
+
+// 1:2 proportional — grid is content-sized
+<Grid layout="ab abb">
+
+// 1:2 proportional — grid auto-fills container width
+<Grid layout="ab abb ?w">
+```
+
+A trailing `*` in sizes cycles the pattern: `| 50 # *` with 6 columns becomes `50px 1fr 50px 1fr 50px 1fr`.
 
 ### Repeat rows
 
@@ -96,7 +119,7 @@ Uppercase letters in repeat rows are **pinned** — they span all repetitions:
 
 ```jsx
 // Sidebar spans all rows, items repeat next to it
-<Grid layout="sa ss Sa* 8 | 120#">
+<Grid layout="sa Sa* 8">
   <Sidebar />
   {items.map(i => <Card />)}
 </Grid>
@@ -128,8 +151,8 @@ Uppercase letters in repeat rows are **pinned** — they span all repetitions:
   <Header /> <Content /> <Footer />
 </Grid>
 
-// Responsive
-<Grid layout="|abc ?w 8" sm="ab aab ?w 8" lg="abc ?w 8">
+// Responsive — each breakpoint is a complete layout string
+<Grid layout="|abc ?w 8" sm="ab aab ?w 8" md="abc ?w 8">
   <A /> <B /> <C />
 </Grid>
 ```
@@ -144,7 +167,7 @@ import { Grid, splitPane, scrollable, debug } from "gridpack";
 let [v, setV] = useState({ w: 200 });
 
 <Grid
-  layout="sC | {w}"
+  layout="sC | {w}#"
   vars={v}
   onVarsChange={setV}
   extensions={[
@@ -172,6 +195,7 @@ let [v, setV] = useState({ w: 200 });
 | `tabs({ var, items, position? })` | Tab bar with content switching |
 | `multiColumn({ area, fill? })` | CSS columns aligned to grid tracks |
 | `fisheye({ axis?, intensity?, min? })` | Tracks expand near cursor, compress away |
+| `render({ container?, cell? })` | Custom DOM output (semantic HTML, tables, etc.) |
 
 ### Writing custom extensions
 
@@ -180,7 +204,10 @@ Extensions are plain objects with lifecycle hooks:
 ```js
 let myExtension = (opts) => ({
   name: "myExtension",
+  needsAreas: false,                                          // force template-areas in auto-flow
   render: ({ parsed, vars, setVar, containerRef }) => [],   // inject elements
+  renderContainer: ({ props, children, parsed }) => el,       // replace container output
+  wrapCell: (child, areaStyle, key, childIdx, parsed) => el,  // replace cell wrapper
   containerStyle: ({ parsed, vars }) => ({}),                // modify container
   areaStyle: (area, vars) => null,                           // modify area wrappers
   transformVars: (vars) => vars,                             // derive vars from vars
@@ -192,13 +219,15 @@ let myExtension = (opts) => ({
 
 ```
 layout    = ["|"] [legend] [map-rows] [gap] [?flags] ["|" cols ["|" rows]]
-legend    = "*" | "*"digit+ | area-def+
-area-def  = letter | LETTER | letter"("mods")" | LETTER"("mods")"
+legend    = "*" | "*"digit+ | "*"pattern | area-def+
+area-def  = letter [digit+] | LETTER [digit+]
+          | letter"("mods")" | LETTER"("mods")"
 mods      = ("s"|"e"|"c"|"S"|"E"|"C")+
-map-row   = (letter|LETTER|".")+ ["*"]
+map-row   = (letter [digit+] | LETTER | ".")+ ["*"]
 gap       = number [number]
-?flags    = "?" ("w"|"h"|"s"|"e"|"c"|"b"|"a"|"g"|"S"|"E"|"C"|"B"|"A"|"G")+
+?flags    = "?" ("w"|"h"|"f"|"F"|"s"|"e"|"c"|"b"|"a"|"g"|"S"|"E"|"C"|"B"|"A"|"G")+
 size      = "." | "#" | number | atom"~"atom | css-literal
+sizes     = size+ ["*"]
 
 Implicit rules:
   legend-only           → single-row map
@@ -209,6 +238,9 @@ Implicit rules:
   row ending "*"        → repeat (varargs)
   UPPER in repeat       → pinned (shared across repetitions)
   "{var}"               → replaced from vars prop
+  trailing "*" in sizes → cycle preceding tokens
+  explicit # in sizes   → auto full-width/height
+  ?secbag flags         → default track size becomes auto
 ```
 
 ## Before & After
@@ -253,7 +285,7 @@ Implicit rules:
 
 ## Links
 
-- [Playground](https://thekeydev.github.io/gridpack/demo/) — interactive demo with 35+ presets
+- [Playground](https://thekeydev.github.io/gridpack/demo/) — interactive demo with 40+ presets, guided tutorials, and live source view
 - [Documentation](https://thekeydev.github.io/gridpack/demo/) — full reference
 - [npm](https://www.npmjs.com/package/gridpack)
 

@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.2
+
+### Lol
+
+- Forgot to update README.md and CHANGELOG.md
+
+## 0.2.1
+
+### Playground Overhaul
+
+- **Guided tutorials** — every preset now has a `guide` with explanation text and `tryThis` hints that tell the user what to edit in the layout field. Content derived from the video tutorial script series.
+- **Source view** — every preset shows its React source code alongside the guide. Responsive breakpoint props are displayed separately when present.
+- **Guide + Debug tabs** — the right panel now has Guide (tutorial + source side by side) and Debug (parsed output, generated CSS) tabs. Guide is the default.
+- **Tab persistence** — navigating between Welcome, Playground, and Docs no longer resets state. All tabs stay mounted once visited, hidden with `display: none`. Preset selection, layout edits, slider positions, and split pane widths are preserved.
+
+### New Presets
+
+- **Size Repeat** (Sizing) — demonstrates trailing `*` in sizes section: `abcdef | 50 # *` cycles the pattern across all tracks.
+- **Product Grid (w/ repeat)** (Responsive) — combines responsive breakpoints with repeat rows.
+
+### Explicit Sizes Auto-Fill
+
+- **`explicitSizes` tracking** — the parser now tracks whether col/row sizes came from an explicit pipe section (`| ...`) or were auto-inferred. Added `explicitSizes: { cols, rows }` to the parsed result.
+- **Smart `width: 100%`** — when the user writes explicit `#` (1fr) in the pipe sizes section (e.g. `| 100 #`), the grid automatically fills its container width. Proportional sizing from repeated area characters (like `ab abb`) no longer triggers auto-fill, keeping those grids content-sized. This distinction prevents the confusing case where `ab abb` and `ab abb | ###` produced identical output.
+- **Per-axis grow detection** — grow areas (uppercase letters) now only force `width: 100%` or `height: 100%` on axes where they actually generate `1fr` tracks, instead of forcing both axes unconditionally.
+- Transpose correctly swaps the `explicitSizes` flags along with everything else.
+
 ## 0.2.0
 
 ### Auto-Flow
