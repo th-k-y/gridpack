@@ -581,11 +581,15 @@ let parseGridLayout = (input, childCount) => {
 		let rowCount = transpose ? colCount : tokenRows.length;
 		let finalColCount = transpose ? tokenRows.length : colCount;
 
+		let ec = !!colSizes, er = !!rowSizes;
+		if (transpose) { let t = ec; ec = er; er = t; }
+
 		return {
 			areas: expandedAreas, growAreas: [...expandedGrow], areaAlign: expandedAlign,
 			templateAreas, colSizes: colSizeList, rowSizes: rowSizeList,
 			colCount: finalColCount, rowCount,
 			gapH, gapV, transpose, expanded, flags,
+			explicitSizes: { cols: ec, rows: er },
 			repeatInfo: { pattern: repeatAreaList, pinned: [...pinnedAreas], count: repeatCount, staticAreas },
 		};
 	}
@@ -678,11 +682,15 @@ let parseGridLayout = (input, childCount) => {
 	let rowCount = transpose ? colCount : mapRows.length;
 	let finalColCount = transpose ? mapRows.length : colCount;
 
+	let ec = !!colSizes, er = !!rowSizes;
+	if (transpose) { let t = ec; ec = er; er = t; }
+
 	return {
 		areas, growAreas: [...growAreas], areaAlign, templateAreas,
 		colSizes: colSizeList, rowSizes: rowSizeList,
 		colCount: finalColCount, rowCount,
 		gapH, gapV, transpose, expanded, flags,
+		explicitSizes: { cols: ec, rows: er },
 	};
 };
 
@@ -690,9 +698,14 @@ let parseGridLayout = (input, childCount) => {
 let toGridStyle = (parsed) => {
 	if (parsed.error) return null;
 
-	let hasFrCols = parsed.colSizes.some(s => s.includes("fr"));
-	let hasFrRows = parsed.rowSizes.some(s => s.includes("fr"));
-	let hasGrowAreas = !!parsed.growAreas.length && !parsed.flags.fullWidth && !parsed.flags.fullHeight;
+	// explicit fr in user-written pipe sizes should imply full width/height
+	// but auto-inferred 1fr (from proportional areas or grow letters) should not
+	let es = parsed.explicitSizes || {};
+	let explicitFrCols = es.cols && parsed.colSizes.some(s => s.includes("fr"));
+	let explicitFrRows = es.rows && parsed.rowSizes.some(s => s.includes("fr"));
+	// grow areas generate 1fr tracks — those need container size to distribute into
+	let growFrCols = parsed.colSizes.some(s => s.includes("fr")) && parsed.growAreas.length > 0;
+	let growFrRows = parsed.rowSizes.some(s => s.includes("fr")) && parsed.growAreas.length > 0;
 
 	let style = { display: "grid" };
 
@@ -709,8 +722,8 @@ let toGridStyle = (parsed) => {
 	style.gridTemplateColumns = parsed.colSizes.join(" ");
 	style.gridTemplateRows = parsed.rowSizes.join(" ");
 
-	if (hasGrowAreas || parsed.flags.fullWidth) style.width = "100%"; else style.width = "fit-content";
-	if (hasGrowAreas || parsed.flags.fullHeight) style.height = "100%"; else style.height = "fit-content";
+	if (growFrCols || explicitFrCols || parsed.flags.fullWidth) style.width = "100%"; else style.width = "fit-content";
+	if (growFrRows || explicitFrRows || parsed.flags.fullHeight) style.height = "100%"; else style.height = "fit-content";
 
 	if (parsed.gapH != null) {
 		style.gap = parsed.gapH === parsed.gapV
