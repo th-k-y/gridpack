@@ -31,7 +31,7 @@ export default function Docs() {
 				<Ex code="#" desc="1fr (in sizes)" />
 				<Ex code="number" desc="Gap (in map) / px size (in sizes)" />
 				<Ex code="|" desc="Transpose prefix / pipe separator for col|row sizes" />
-				<Ex code="*" desc="Auto-legend from children count (single row)" />
+				<Ex code="*" desc="Auto-legend from children count / auto-fill prefix on sizes" />
 				<Ex code="*N" desc="Auto-flow grid with N columns" />
 				<Ex code="*pattern" desc="Auto-flow with span pattern — e.g. *s3c6a3 = 12-col with 3/6/3 spans" />
 				<Ex code="h12" desc="Char-count shorthand — h12 expands to hhhhhhhhhhhh in map rows" />
@@ -59,7 +59,11 @@ export default function Docs() {
 				<Ex code="200~#" desc="minmax(200px, 1fr)" />
 				<Ex code="100 200 *" desc="Trailing * cycles sizes to fill all tracks: 100 200 100 200 ..." />
 				<Ex code="|| 40 80 *" desc="Skip col-sizes (empty), cycle row-sizes: 40 80 40 80 ..." />
+				<Ex code="*200~#" desc="Leading * = auto-fill: repeat(auto-fill, minmax(200px, 1fr))" />
+				<Ex code="*200~#*" desc="Both * = auto-fit: repeat(auto-fit, minmax(200px, 1fr))" />
+				<Ex code="*200 300" desc="Multi-size auto-fill: repeat(auto-fill, 200px 300px)" />
 				<div style={{ color: "#555", marginTop: 4 }}>Without trailing <C>*</C>, remaining tracks are filled with 1fr (auto-flow) or auto (map).</div>
+				<div style={{ color: "#555", marginTop: 2 }}>Leading <C>*</C> auto-fill/auto-fit implies full width (or height when transposed).</div>
 			</Section>
 			<Section title="? Flags (container-level)">
 				<div style={{ color: "#888", marginBottom: 4 }}>Flags float freely in the layout string. Lowercase = justify, Uppercase = align.</div>
@@ -109,6 +113,7 @@ export default function Docs() {
 				<Ex code='tabs({ var, items, position? })' desc='Tab bar — items: [{ label, area, sizeVar? }], position: "top" | "bottom"' />
 				<Ex code='multiColumn({ area, fill? })' desc='Auto-align CSS multi-column to grid tracks — fill: "auto"|"balance"' />
 				<Ex code='fisheye({ axis?, intensity?, min? })' desc='Tracks expand near cursor — axis: "x"|"y"|"both". Auto-swaps on transpose.' />
+				<Ex code='masonry({ balanced? })' desc='Masonry layout — close gaps via translateY. Items use --width/--height CSS vars or get measured. Transpose-aware.' />
 				<Ex code='render({ container?, cell? })' desc="Custom DOM output — replace container tag and/or cell wrapper elements" />
 				<div style={{ color: "#555", marginTop: 8, fontSize: 11 }}>Extension interface: {"{ name, render?, renderContainer?, wrapCell?, containerStyle?, areaStyle?, transformVars?, transformAreas?, needsAreas? }"}</div>
 			</Section>
@@ -126,6 +131,8 @@ export default function Docs() {
 				<Ex code="*4 ?whF" desc="4-col auto-flow, dense packing (?F)" />
 				<Ex code="*6 | 80 # *" desc="6-col grid, col sizes cycle 80px 1fr" />
 				<Ex code="*3 || 40 80 *" desc="3-col grid, row sizes cycle 40px 80px" />
+				<Ex code="* 8 ?w | * 200~#" desc="Auto-fill: responsive columns, min 200px each" />
+				<Ex code="* 8 ?w | * 200~# *" desc="Auto-fit: empty tracks collapse, items stretch" />
 				<Ex code="?whcC" desc="Center single child both axes" />
 			</Section>
 		</div>
@@ -173,8 +180,8 @@ export default function Docs() {
 				 | "s" | "e" | "c" | "b" | "a" | "g"    -- justify-content
 				 | "S" | "E" | "C" | "B" | "A" | "G"    -- align-content
 
-	col-sizes    = size-token+ ["*"]
-	row-sizes    = size-token+ ["*"]
+	col-sizes    = ["*"] size-token+ ["*"]
+	row-sizes    = ["*"] size-token+ ["*"]
 
 	size-token   = "."                               -- auto
 				 | "#"                               -- 1fr
@@ -186,6 +193,11 @@ export default function Docs() {
 
 	-- trailing "*" in sizes: cycle preceding tokens to fill track count
 	--   "80 # *" with 6 cols → 80px 1fr 80px 1fr 80px 1fr
+	-- leading "*" in sizes: repeat(auto-fill, ...)
+	--   "* 200~#" ? repeat(auto-fill, minmax(200px, 1fr))
+	-- leading + trailing "*": repeat(auto-fit, ...)
+	--   "* 200~# *" ? repeat(auto-fit, minmax(200px, 1fr))
+	-- auto-fill/fit implies full width (or height when transposed)
 
 	number       = digit+ ["." digit+]
 	letter       = "a"-"z"

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.3
+
+### Masonry Extension
+
+- **`masonry()` extension** — adapts the TrigenSoftware/masonry-grid algorithm into a gridpack extension. Uses `translateY()` (or `translateX()` when transposed) to close vertical gaps in auto-flow grids.
+- **Dual sizing mode** — auto-detected per item. Items with `--width`/`--height` CSS vars get aspect-ratio-locked sizing. Items without get measured from `offsetHeight` (content-sized). Both modes work in the same grid.
+- **Balanced mode** — `masonry({ balanced: true })` reorders items within rows via CSS `order` to minimize total grid height. Pairs shortest items with tallest columns. Stable sort with quantized comparisons to prevent oscillating order swaps during resize.
+- **Transpose support** — respects the `|` transpose prefix. Masonry packs horizontally with `translateX()` instead of vertically.
+- **Multi-size track support** — works with alternating track sizes like `* 80 60` (e.g. `repeat(auto-fill, 80px 60px)`). Each item uses its own column's track width for height calculation, including after balanced reordering.
+- 5 playground presets: Regular, Balanced, Photo Gallery (with images + balanced toggle), Cards (content-measured), Transposed.
+
+### Auto-Fill / Auto-Fit Sizes
+
+- **Leading `*` on col/row sizes** — `| * 200~#` becomes `repeat(auto-fill, minmax(200px, 1fr))`. The browser determines column count based on container width. Works with any auto-flow layout.
+- **Both leading + trailing `*`** — `| * 200~# *` becomes `repeat(auto-fit, minmax(200px, 1fr))`. Auto-fit collapses empty tracks so items stretch to fill the row.
+- **Multi-size patterns** — `| * 200 300` becomes `repeat(auto-fill, 200px 300px)`, creating alternating track pairs.
+- **Auto-implies full width** — auto-fill/auto-fit sizes automatically set `width: 100%` (or `height: 100%` when transposed) without needing `?w`.
+- **`parseSizeRepeat()` helper** — strips leading/trailing `*` from sizes strings, returns repeat mode. `buildRepeatSizes()` generates the CSS `repeat()` value.
+- `colRepeat`/`rowRepeat`/`colRepeatSizes`/`rowRepeatSizes` fields added to parsed result. Transpose correctly swaps them.
+- 2 playground presets: Auto-Fill (responsive column count), Auto-Fit (empty track collapse comparison).
+
 ## 0.2.2
 
 ### Lol

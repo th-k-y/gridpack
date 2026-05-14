@@ -50,6 +50,29 @@ let fillSizes = (sizeStr, count, defaultSize = "1fr") => {
 	return fill > 0 ? [...normed, ...Array(fill).fill(defaultSize)] : normed.slice(0, count);
 };
 
+// --- detect and strip auto-fill/auto-fit from a col/row-sizes string ---
+// leading * on the sizes segment = auto-fill
+// leading * + trailing * = auto-fit
+// returns { sizeStr, repeat: null | "auto-fill" | "auto-fit" }
+let parseSizeRepeat = (sizeStr) => {
+	if (!sizeStr) return { sizeStr: null, repeat: null };
+	let s = sizeStr.trim();
+	let tokens = tokenizeSizes(s);
+	if (tokens.length === 0 || tokens[0] !== "*") return { sizeStr: s, repeat: null };
+	// leading * found — strip it
+	tokens = tokens.slice(1);
+	let trailing = tokens.length > 0 && tokens[tokens.length - 1] === "*";
+	if (trailing) tokens = tokens.slice(0, -1);
+	let mode = trailing ? "auto-fit" : "auto-fill";
+	// normalize sizes and produce the repeat() CSS value directly
+	let normed = tokens.map(normSize);
+	return { sizeStr: null, repeat: mode, sizes: normed };
+};
+
+// --- build repeat() CSS string from parsed sizes ---
+let buildRepeatSizes = (repeatMode, sizes) =>
+	"repeat(" + repeatMode + ", " + sizes.join(" ") + ")";
+
 // --- ? flags: secbag/SECBAG + w/h ---
 let JustifyMap = { s: "start", e: "end", c: "center", b: "space-between", a: "space-around", g: "space-evenly" };
 let AlignMap = { S: "start", E: "end", C: "center", B: "space-between", A: "space-around", G: "space-evenly" };
@@ -168,7 +191,13 @@ let parseGridLayout = (input, childCount) => {
 	if (!input) return { error: "empty layout" };
 
 	let pipeParts = input.split("|").map(s => s.trim());
-	let mainPart = pipeParts[0], colSizes = pipeParts[1] || null, rowSizes = pipeParts[2] || null;
+	let mainPart = pipeParts[0];
+	let colSizesRaw = pipeParts[1] || null, rowSizesRaw = pipeParts[2] || null;
+	let colParsed = parseSizeRepeat(colSizesRaw);
+	let rowParsed = parseSizeRepeat(rowSizesRaw);
+	let colSizes = colParsed.sizeStr, rowSizes = rowParsed.sizeStr;
+	let colRepeat = colParsed.repeat || null, rowRepeat = rowParsed.repeat || null;
+	let colRepeatSizes = colParsed.sizes || null, rowRepeatSizes = rowParsed.sizes || null;
 
 	// tokenize main part, preserving parenthesized groups
 	let segments = [], buf = "", depth = 0;
@@ -250,7 +279,13 @@ let parseGridLayout = (input, childCount) => {
 			// no grid-template-areas, use auto-placement
 			let areas = Array.from({ length: childCount }, (_, i) => "c" + i);
 
-			if (transpose) { let t = colSizeList; colSizeList = rowSizeList; rowSizeList = t; let tr = colNum; colNum = rowNum; rowNum = tr; let tg = localGapH; localGapH = localGapV; localGapV = tg; }
+			if (transpose) {
+				let t = colSizeList; colSizeList = rowSizeList; rowSizeList = t;
+				let tr = colNum; colNum = rowNum; rowNum = tr;
+				let tg = localGapH; localGapH = localGapV; localGapV = tg;
+				let tcr = colRepeat; colRepeat = rowRepeat; rowRepeat = tcr;
+				let tcs = colRepeatSizes; colRepeatSizes = rowRepeatSizes; rowRepeatSizes = tcs;
+			}
 
 			return {
 				areas, growAreas: [], areaAlign: {},
@@ -259,6 +294,7 @@ let parseGridLayout = (input, childCount) => {
 				colCount: colNum, rowCount: rowNum,
 				gapH: localGapH, gapV: localGapV, transpose, expanded: true, flags,
 				autoFlow: colNum,
+				colRepeat, rowRepeat, colRepeatSizes, rowRepeatSizes,
 			};
 		}
 
@@ -311,6 +347,7 @@ let parseGridLayout = (input, childCount) => {
 			colCount: colNum, rowCount: rowNum,
 			gapH: localGapH, gapV: localGapV, transpose, expanded: true, flags,
 			autoFlow: colNum, childSpans,
+			colRepeat, rowRepeat, colRepeatSizes, rowRepeatSizes,
 		};
 	}
 
@@ -403,6 +440,7 @@ let parseGridLayout = (input, childCount) => {
 			colCount: colNum, rowCount: rowNum,
 			gapH: localGapH, gapV: localGapV, transpose, expanded: true, flags,
 			autoFlow: colNum, childSpans: allSpans,
+			colRepeat, rowRepeat, colRepeatSizes, rowRepeatSizes,
 		};
 	}
 
@@ -591,6 +629,7 @@ let parseGridLayout = (input, childCount) => {
 			gapH, gapV, transpose, expanded, flags,
 			explicitSizes: { cols: ec, rows: er },
 			repeatInfo: { pattern: repeatAreaList, pinned: [...pinnedAreas], count: repeatCount, staticAreas },
+			colRepeat: null, rowRepeat: null, colRepeatSizes: null, rowRepeatSizes: null,
 		};
 	}
 
@@ -691,6 +730,7 @@ let parseGridLayout = (input, childCount) => {
 		colCount: finalColCount, rowCount,
 		gapH, gapV, transpose, expanded, flags,
 		explicitSizes: { cols: ec, rows: er },
+		colRepeat: null, rowRepeat: null, colRepeatSizes: null, rowRepeatSizes: null,
 	};
 };
 
@@ -719,11 +759,18 @@ let toGridStyle = (parsed) => {
 		style.gridAutoFlow = base + (parsed.flags.flowDense ? " dense" : "");
 	}
 
-	style.gridTemplateColumns = parsed.colSizes.join(" ");
-	style.gridTemplateRows = parsed.rowSizes.join(" ");
+	style.gridTemplateColumns = parsed.colRepeat
+		? buildRepeatSizes(parsed.colRepeat, parsed.colRepeatSizes)
+		: parsed.colSizes.join(" ");
+	style.gridTemplateRows = parsed.rowRepeat
+		? buildRepeatSizes(parsed.rowRepeat, parsed.rowRepeatSizes)
+		: parsed.rowSizes.join(" ");
 
-	if (growFrCols || explicitFrCols || parsed.flags.fullWidth) style.width = "100%"; else style.width = "fit-content";
-	if (growFrRows || explicitFrRows || parsed.flags.fullHeight) style.height = "100%"; else style.height = "fit-content";
+	// auto-fill/auto-fit implies full width (or height when transposed)
+	let autoRepeatCols = !!parsed.colRepeat;
+	let autoRepeatRows = !!parsed.rowRepeat;
+	if (growFrCols || explicitFrCols || parsed.flags.fullWidth || autoRepeatCols) style.width = "100%"; else style.width = "fit-content";
+	if (growFrRows || explicitFrRows || parsed.flags.fullHeight || autoRepeatRows) style.height = "100%"; else style.height = "fit-content";
 
 	if (parsed.gapH != null) {
 		style.gap = parsed.gapH === parsed.gapV

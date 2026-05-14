@@ -57,9 +57,11 @@ Everything fits in one prop. The string has a simple grammar:
 | `\| 12` | Auto v-stack with 12px gap |
 | `*7 ?wh` | 7-column auto-flow grid |
 | `a(e)B ab* 8 \| .#` | Form: labels right-aligned, inputs grow, repeat rows |
-| `sah sh Sa* 8 | {sw}# | 50` | Pinned sidebar + header, repeating items |
+| `sah sh Sa* 8 \| {sw}# \| 50` | Pinned sidebar + header, repeating items |
 | `abc \| 100~# 100~# 100~#` | 3 columns, each min 100px |
 | `abcdef \| 50 # *` | 6 columns, sizes cycle: 50px 1fr 50px 1fr ... |
+| `* 8 ?w \| *200~#` | Auto-fill: responsive columns, min 200px |
+| `* 8 ?w \| *200~#*` | Auto-fit: same but empty tracks collapse |
 
 ### Token vocabulary
 
@@ -71,7 +73,7 @@ Everything fits in one prop. The string has a simple grammar:
 | `#` | `1fr` (in sizes) |
 | `\|` | Transpose prefix / pipe separator |
 | `~` | `minmax(a, b)` — e.g. `200~#` |
-| `*` | Auto-legend / repeat row / size cycling |
+| `*` | Auto-legend / repeat row / size cycling / auto-fill prefix |
 | `?` | Flags (`?w` width, `?h` height, `?cC` center) |
 | `( )` | Per-area alignment — `a(cC)` centers area `a` |
 | `{ }` | Template variable — `{sidebar}` |

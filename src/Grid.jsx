@@ -835,5 +835,311 @@ let render = (opts) => ({
 	...(opts.cell && { wrapCell: opts.cell }),
 });
 
-export { Grid, DefaultBreaks, useContainerWidth, debug,
-	collapsible, accordion, splitPane, scrollable, overlay, animate, tabs, multiColumn, fisheye, render };
+// --- masonry extension for gridpack ---
+// adapts the masonry-grid algorithm (TrigenSoftware/masonry-grid) into
+// a gridpack extension. uses translateY (or translateX when transposed)
+// to close vertical gaps in an auto-flow grid.
+//
+// two sizing modes per item (auto-detected):
+//   1. aspect-ratio: item has --width/--height CSS vars → height from ratio
+//   2. measured: no vars → height from offsetHeight (content-sized)
+//
+// transpose: layout string starting with | swaps axes — masonry packs
+// horizontally instead of vertically.
+//
+// usage:
+//   masonry()                  � regular masonry
+//   masonry({ balanced: true })   � balanced (reorder for min height)
+//
+// column sizing is controlled by the layout string via *-prefix:
+//   * 10 ?w | *200~#    ? repeat(auto-fill, minmax(200px, 1fr))
+//   * 10 ?w | *200~#*   ? repeat(auto-fit, minmax(200px, 1fr))
+//
+// opts:
+//   balanced   � reorder items within rows for minimal height (default: false)
+
+let MasonryEffect = ({ containerRef, parsed, balanced }) => {
+	React.useEffect(() => {
+		let container = containerRef.current;
+		if (!container) return;
+
+		let tp = parsed.transpose;
+
+		let gap = -1;
+		let trackSizes = null; // array of track widths (one per column/row)
+		let containerWidth = -1;
+		let columnsCount = -1;
+		let containerAspectRatio = -1;
+		let positionsMap = new WeakMap();
+
+		// --- read --width/--height from element or its first child ---
+		let readRatio = el => {
+			let w = parseFloat(el.style.getPropertyValue("--width"));
+			let h = parseFloat(el.style.getPropertyValue("--height"));
+			if (!isNaN(w) && !isNaN(h) && w!==0) return h / w;
+			return NaN;
+		};
+
+		// --- prepare element: hoist vars + set aspect-ratio, or clear it ---
+		let prepareElement = el => {
+			let r = readRatio(el);
+			if (isNaN(r)) {
+				let child = el.firstElementChild;
+				if (child) {
+					r = readRatio(child);
+					if (!isNaN(r)) {
+						el.style.setProperty("--width", child.style.getPropertyValue("--width"));
+						el.style.setProperty("--height", child.style.getPropertyValue("--height"));
+					}
+				}
+			}
+			if (!isNaN(r)) {
+				let w = el.style.getPropertyValue("--width");
+				let h = el.style.getPropertyValue("--height");
+				// when transposed, swap aspect-ratio so the "short" axis is controlled
+				el.style.aspectRatio = tp ? (h + " / " + w) : (w + " / " + h);
+				return { ratio: r, measured: false };
+			}
+			el.style.removeProperty("aspect-ratio");
+			return { ratio: NaN, measured: true };
+		};
+
+		// --- get item size along the masonry axis ---
+		// normal: height (masonry packs vertically)
+		// transposed: width (masonry packs horizontally)
+		let getItemSize = (el, i, info) => {
+			if (!info.measured) return info.ratio * trackSizes[i % columnsCount];
+			return tp ? el.offsetWidth : el.offsetHeight;
+		};
+
+		let getFramePosition = (el, i, offset, info) => {
+			let height = getItemSize(el, i, info);
+			let bottom = offset + height + (i >= columnsCount ? gap : 0);
+			return { realIndex: i, virtualIndex: i,
+				height, realBottom: bottom, virtualBottom: bottom };
+		};
+
+		// --- balance a row by reordering to minimize height ---
+		let balanceRow = (positions, start, end) => {
+			let prevRow = [];
+			let currRow = [];
+			for (let s = 0, t = start; t <= end; s++, t++) {
+				prevRow[s] = positions[t - columnsCount];
+				currRow[s] = positions[t];
+			}
+			prevRow.sort((a,b) => (Math.round(b.virtualBottom) - Math.round(a.virtualBottom)) || (b.virtualIndex - a.virtualIndex));
+			currRow.sort((a,b) => (Math.round(a.height) - Math.round(b.height)) || (a.virtualIndex - b.virtualIndex));
+			for (let s = 0, t = start; t <= end; s++, t++) {
+				let vi = prevRow[s].virtualIndex + columnsCount;
+				positions[vi] = currRow[s];
+				currRow[s].virtualIndex = vi;
+			}
+		};
+
+		let translate = tp ? "translateX" : "translateY";
+
+		// --- regular reflow ---
+		let reflowRegular = () => {
+			let children = container.children;
+			let count = Math.min(children.length, parsed.areas?.length || children.length);
+			let maxBottom = -1;
+
+			for (let i = 0, rowOffset = 0, maxReal = 0; i < count; i++) {
+				let el = children[i];
+				if (columnsCount===1) {
+					el.style.removeProperty("transform");
+					continue;
+				}
+				if (i % columnsCount===0) rowOffset = maxReal;
+				let info = prepareElement(el);
+				let pos = getFramePosition(el, i, rowOffset, info);
+				positionsMap.set(el, pos);
+
+				if (i >= columnsCount) {
+					let above = positionsMap.get(children[i - columnsCount]);
+					let diff = rowOffset - above.virtualBottom;
+					if (diff!==0) {
+						let pct = diff * 100 / pos.height * -1;
+						el.style.transform = translate + "(" + pct + "%)";
+						pos.virtualBottom -= diff;
+					} else el.style.removeProperty("transform");
+				} else el.style.removeProperty("transform");
+
+				maxReal = Math.max(maxReal, pos.realBottom);
+				maxBottom = Math.max(maxBottom, pos.virtualBottom);
+			}
+			return maxBottom;
+		};
+
+		// --- balanced reflow ---
+		let reflowBalanced = () => {
+			let children = container.children;
+			let count = Math.min(children.length, parsed.areas?.length || children.length);
+			let last = count - 1;
+			let positions = Array(count);
+			let infos = Array(count);
+			let maxBottom = -1;
+
+			for (let i = 0, rowOffset = 0, maxReal = 0; i < count; i++) {
+				let el = children[i];
+				if (columnsCount===1) {
+					el.style.removeProperty("transform");
+					el.style.removeProperty("order");
+					continue;
+				}
+				if (i % columnsCount===0) rowOffset = maxReal;
+				let info = prepareElement(el);
+				infos[i] = info;
+				let pos = getFramePosition(el, i, rowOffset, info);
+				positions[i] = pos;
+
+				if (i >= columnsCount && ((i + 1) % columnsCount===0 || i===last)) {
+					let rowStart = i - i % columnsCount;
+					balanceRow(positions, rowStart, i);
+
+					for (let d = rowStart; d <= i; d++) {
+						let p = positions[d];
+						let child = children[p.realIndex];
+						child.style.order = String(p.virtualIndex);
+
+						// recalculate height for new column's track size
+						let newCol = p.virtualIndex % columnsCount;
+						let inf = infos[p.realIndex];
+						if (!inf.measured) {
+							p.height = inf.ratio * trackSizes[newCol];
+							p.realBottom = rowOffset + p.height + gap;
+							p.virtualBottom = p.realBottom;
+						}
+
+						let above = positions[d - columnsCount];
+						let diff = rowOffset - above.virtualBottom;
+						if (diff!==0) {
+							let pct = diff * 100 / p.height * -1;
+							child.style.transform = translate + "(" + pct + "%)";
+							p.virtualBottom -= diff;
+						} else child.style.removeProperty("transform");
+
+						maxReal = Math.max(maxReal, p.realBottom);
+						maxBottom = Math.max(maxBottom, p.virtualBottom);
+					}
+				} else if (i < columnsCount) {
+					el.style.order = String(i);
+					el.style.removeProperty("transform");
+					maxReal = Math.max(maxReal, pos.realBottom);
+					maxBottom = Math.max(maxBottom, pos.virtualBottom);
+				}
+			}
+			return maxBottom;
+		};
+
+		// --- main reflow dispatcher ---
+		let reflow = () => {
+			let cs = getComputedStyle(container);
+			// read the track sizes along the masonry's cross-axis
+			let trackStr = tp ? cs.gridTemplateRows : cs.gridTemplateColumns;
+			let cols = trackStr.split(/\s+/);
+			let newColCount = cols.length;
+			let newTrackSizes = cols.map(s => parseFloat(s) || 0);
+			let newContainerWidth = tp ? container.clientHeight : container.clientWidth;
+			let newGap = parseFloat(cs.gap)
+				|| parseFloat(tp ? cs.rowGap : cs.columnGap) || 0;
+
+			// skip if container or tracks aren't laid out yet
+			if (newTrackSizes[0]===0 || newContainerWidth===0) return;
+
+			// check if anything actually changed
+			let same = newGap===gap && newContainerWidth===containerWidth
+				&& newColCount===columnsCount
+				&& trackSizes && newTrackSizes.every((s, i) => s===trackSizes[i]);
+			if (same) {
+				if (containerAspectRatio!==-1) {
+					let dim = newContainerWidth * containerAspectRatio;
+					container.style[tp ? "width" : "height"] = dim + "px";
+				}
+				return;
+			}
+
+			gap = newGap;
+			trackSizes = newTrackSizes;
+			containerWidth = newContainerWidth;
+			columnsCount = newColCount;
+
+			let maxBottom = balanced ? reflowBalanced() : reflowRegular();
+
+			let prop = tp ? "width" : "height";
+			if (maxBottom===-1) {
+				container.style.removeProperty(prop);
+				containerAspectRatio = -1;
+			} else {
+				container.style[prop] = maxBottom + "px";
+				containerAspectRatio = maxBottom / containerWidth;
+			}
+		};
+
+		// --- observers ---
+		let mutObs;
+		let startMut = () => {
+			mutObs.observe(container, {
+				childList: true, attributeFilter: ["style"], subtree: true,
+			});
+		};
+		let stopMut = () => mutObs.disconnect();
+
+		let resizeObs = new ResizeObserver(() => {
+			stopMut();
+			reflow();
+			startMut();
+		});
+
+		mutObs = new MutationObserver(() => {
+			stopMut();
+			reflow();
+			startMut();
+		});
+
+		reflow();
+		resizeObs.observe(container);
+		startMut();
+
+		return () => {
+			resizeObs.disconnect();
+			stopMut();
+			for (let child of container.children) {
+				positionsMap.delete(child);
+				child.style.removeProperty("transform");
+				child.style.removeProperty("order");
+				child.style.removeProperty("aspect-ratio");
+				child.style.removeProperty("--width");
+				child.style.removeProperty("--height");
+				child.style.removeProperty("min-height");
+			}
+			container.style[tp ? "width" : "height"] = "100%";
+		};
+	}, [containerRef, parsed, balanced]);
+
+	return null;
+};
+
+// --- masonry extension factory ---
+let masonry = (opts = {}) => {
+	let { balanced = false } = opts;
+	return {
+		name: "masonry",
+		render: ({ containerRef, parsed }) => [
+			<MasonryEffect key="masonry-effect" containerRef={containerRef}
+				parsed={parsed} balanced={balanced} />,
+		],
+		containerStyle: ({ parsed }) => {
+			let tp = parsed.transpose;
+			return {
+				...(tp
+					? { justifyItems: "start", alignItems: "unset" }
+					: { alignItems: "start", justifyItems: "unset" }),
+				overflow: "hidden",
+			};
+		},
+	};
+};
+
+export { Grid, DefaultBreaks, useContainerWidth, debug, collapsible, accordion, splitPane,
+	scrollable, overlay, animate, tabs, multiColumn, fisheye, render, masonry };

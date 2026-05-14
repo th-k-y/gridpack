@@ -1,5 +1,5 @@
 import React from "react";
-import { Grid, debug, debug2, accordion, collapsible, splitPane, scrollable, animate, overlay, tabs, multiColumn, fisheye, render } from "../src/Grid.jsx";
+import { Grid, debug, debug2, accordion, collapsible, splitPane, scrollable, animate, overlay, tabs, multiColumn, fisheye, render, masonry } from "../src/Grid.jsx";
 import { parseGridLayout, toGridStyle } from "../src/grid-layout-dsl.js";
 
 let Style = ({ children }) => <style>{children}</style>
@@ -356,6 +356,20 @@ let presets = [
 		src: '<Grid layout="*6 4 ?wh | 50 # *">\n\t{items}\n</Grid>',
 		guide: "A trailing `*` in the sizes section means \"cycle these sizes to fill all tracks.\" Here `50 # *` with 6 columns becomes `50px 1fr 50px 1fr 50px 1fr` — alternating fixed and flexible.",
 		tryThis: ["The pattern `80 #` repeats across all 6 columns", "Try `| 60 # # *` for a different cycle pattern"] },
+	{ cat: "Auto-Flow", name: "Auto-Fill", layout: "* 6 ?w | *150~#", w: 500, h: 200,
+		children: (v, p) => { let n = p?.n || 8; return Array.from({ length: n }, (_, i) => <Box key={i} c={i}>{i + 1}</Box>); },
+		params: [{ key: "n", label: "children", type: "range", min: 1, max: 16, def: 8 }],
+		info: "Leading * on sizes = auto-fill — column count adapts to width",
+		src: '<Grid layout="* 6 ?w | *150~#">\n\t{items}\n</Grid>',
+		guide: "A leading `*` on the sizes segment enables `repeat(auto-fill, ...)`. Here `*150~#` becomes `repeat(auto-fill, minmax(150px, 1fr))` — the browser creates as many columns as fit, each at least 150px wide.\n\nNo fixed column count needed — `*` alone in the main segment means auto-flow with the count determined by auto-fill.",
+		tryThis: ["Resize the preview to see columns appear and disappear", "Reduce children to 2-3 and notice empty tracks still hold space"] },
+	{ cat: "Auto-Flow", name: "Auto-Fit", layout: "* 6 ?w | *150~#*", w: 500, h: 200,
+		children: (v, p) => { let n = p?.n || 3; return Array.from({ length: n }, (_, i) => <Box key={i} c={i}>{i + 1}</Box>); },
+		params: [{ key: "n", label: "children", type: "range", min: 1, max: 12, def: 3 }],
+		info: "Both * = auto-fit — empty tracks collapse, items stretch",
+		src: '<Grid layout="* 6 ?w | *150~#*">\n\t{items}\n</Grid>',
+		guide: "Adding a trailing `*` alongside the leading `*` switches from auto-fill to auto-fit: `*150~#*` becomes `repeat(auto-fit, minmax(150px, 1fr))`.\n\nThe difference: with few items, auto-fill keeps empty tracks (holding space), while auto-fit collapses them to 0 so items stretch to fill the row. Try the slider — with 3 items they stretch wide, unlike auto-fill.",
+		tryThis: ["Compare with the Auto-Fill preset at 3 children — items stretch here", "Add more children to see auto-fit wrap to multiple rows", "The trailing `*` is the auto-fit signal — remove it to get auto-fill"] },
 	{ cat: "Auto-Flow", name: "Alternating Rows", layout: "*3 4 ?wh || 40 80 *", w: 400, h: 280,
 		children: (v, p) => { let n = p?.n || 12; return Array.from({ length: n }, (_, i) => <Box key={i} c={i}>{i + 1}</Box>); },
 		params: [{ key: "n", label: "children", type: "range", min: 1, max: 18, def: 12 }],
@@ -400,6 +414,132 @@ let presets = [
 		src: '<Grid layout="*3 8 ?wh"\n\textensions={[\n\t\tscrollable({ area: ["c0","c1",...] })\n\t]}\n>\n\t{panels}\n</Grid>',
 		guide: "Extensions that need area names (like `scrollable`) trigger automatic conversion from auto-flow to template-areas mode. Grid generates `c0, c1, c2, ...` names internally so extensions work seamlessly.",
 		tryThis: ["Scroll each panel independently", "This is auto-flow but with per-area behavior"] },
+
+	// --- masonry ---
+	{ cat: "Masonry", name: "Regular", layout: "* 10 ?w | *150~#", w: 600, h: 400,
+		ext: (v, p) => [masonry()],
+		children: () => {
+			let frames = [
+				[4, 3], [1, 1], [3, 4], [3, 2], [1, 1], [4, 3],
+				[2, 3], [3, 2], [1, 1], [4, 3], [3, 4], [1, 1],
+			];
+			return frames.map(([w, h], i) => {
+				let hue = (i * 31 + 180) % 360;
+				return <div key={i} style={{
+					"--width": w, "--height": h,
+					background: `hsl(${hue}, 35%, 20%)`,
+					border: `1px solid hsl(${hue}, 25%, 32%)`,
+					borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+					fontSize: 11, fontWeight: 600, color: `hsl(${hue}, 50%, 65%)`, height: "100%",
+				}}>{w}:{h}</div>;
+			});
+		},
+		info: "Regular masonry — items pulled up via translateY()",
+		src: '<Grid layout="* 10 ?w | *150~#"\n\textensions={[masonry()]}\n>\n\t<div style={{ "--width": 4, "--height": 3 }}>4:3</div>\n\t<div style={{ "--width": 1, "--height": 1 }}>1:1</div>\n\t...\n</Grid>',
+		guide: "Masonry layout using the `masonry()` extension. Items declare their aspect ratio via `--width` and `--height` CSS variables. The extension uses `translateY()` to pull items up and fill vertical gaps.\n\nColumn sizing is in the layout string: `*150~#` means `repeat(auto-fill, minmax(150px, 1fr))` — the `*` prefix on sizes enables auto-fill.",
+		tryThis: ["Items maintain their aspect ratios", "Gaps are filled by pulling items up", "Resize the preview to see columns reflow"] },
+	{ cat: "Masonry", name: "Balanced", layout: "* 10 ?w | *150~#", w: 600, h: 400,
+		ext: (v, p) => [masonry({ balanced: true })],
+		children: () => {
+			let frames = [
+				[4, 3], [1, 1], [3, 4], [3, 2], [1, 1], [4, 3],
+				[2, 3], [3, 2], [1, 1], [4, 3], [3, 4], [1, 1],
+			];
+			return frames.map(([w, h], i) => {
+				let hue = (i * 31 + 180) % 360;
+				return <div key={i} style={{
+					"--width": w, "--height": h,
+					background: `hsl(${hue}, 35%, 20%)`,
+					border: `1px solid hsl(${hue}, 25%, 32%)`,
+					borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+					fontSize: 11, fontWeight: 600, color: `hsl(${hue}, 50%, 65%)`, height: "100%",
+				}}>{w}:{h}</div>;
+			});
+		},
+		info: "Balanced masonry — reorders items for minimal total height",
+		src: '<Grid layout="* 10 ?w | *150~#"\n\textensions={[masonry({ balanced: true })]}\n>\n\t...\n</Grid>',
+		guide: "Balanced masonry reorders items within each row using the CSS `order` property to minimize total grid height. Tall items get paired with short previous-row columns, producing a more compact result than regular masonry.\n\nThe DOM order stays the same — only the visual order changes.",
+		tryThis: ["Compare with the Regular preset — notice the height difference", "Items are visually reordered but DOM order is preserved"] },
+	{ cat: "Masonry", name: "Photo Gallery", layout: "* 8 ?w | *180~#", w: 600, h: 450,
+		ext: (v, p) => [masonry({ balanced: p?.balanced ?? true })],
+		children: (v, p) => {
+			let photos = [
+				[4, 3, 200], [3, 4, 201], [1, 1, 202], [16, 9, 203],
+				[3, 2, 204], [2, 3, 205], [4, 3, 206], [1, 1, 207],
+				[3, 4, 208], [4, 3, 209], [2, 3, 210], [3, 2, 211],
+			];
+			let n = p?.n || 12;
+			return photos.slice(0, n).map(([w, h, seed], i) =>
+				<div key={i} style={{
+					"--width": w, "--height": h,
+					overflow: "hidden", borderRadius: 6,
+				}}>
+					<img src={`https://picsum.photos/seed/${seed}/${w * 100}/${h * 100}`}
+						style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+						alt={`Photo ${i + 1}`} />
+				</div>
+			);
+		},
+		params: [
+			{ key: "n", label: "photos", type: "range", min: 3, max: 12, def: 12 },
+			{ key: "balanced", label: "balanced", type: "toggle", on: true, off: false },
+		],
+		info: "Photo gallery with real images — toggle balanced mode",
+		src: '<Grid layout="* 8 ?w | *180~#"\n\textensions={[\n\t\tmasonry({ balanced: true })\n\t]}\n>\n\t<div style={{ "--width": 4, "--height": 3 }}>\n\t\t<img src="..." />\n\t</div>\n\t...\n</Grid>',
+		guide: "A photo gallery using masonry layout. Each image declares its aspect ratio via `--width` and `--height`. The extension reads these from the child elements and computes vertical translations.\n\nToggle balanced mode to see how reordering minimizes total height. Column sizing `*180~#` is `repeat(auto-fill, minmax(180px, 1fr))`.",
+		tryThis: ["Toggle balanced mode to compare layouts", "Adjust the photo count", "Resize the preview to see columns reflow"] },
+	{ cat: "Masonry", name: "Cards", layout: "* 12 ?w | *200~#", w: 600, h: 400,
+		ext: (v, p) => [masonry({ balanced: true })],
+		children: () => {
+			let cards = [
+				{ t: "Getting Started", d: "Quick introduction to the library and core concepts." },
+				{ t: "API Reference", d: "Complete reference for all available functions, options, and configuration parameters." },
+				{ t: "Examples", d: "Live demos and code samples." },
+				{ t: "Extensions", d: "How to write custom extensions. Covers the lifecycle hooks, render functions, and best practices for composable plugins." },
+				{ t: "Layout DSL", d: "Grammar reference for the compact layout string." },
+				{ t: "Changelog", d: "Version history." },
+				{ t: "FAQ", d: "Frequently asked questions about setup, browser support, performance, and edge cases with various frameworks." },
+				{ t: "Migration Guide", d: "Upgrading from v1." },
+				{ t: "Themes", d: "Customizing colors, fonts, and spacing. Includes dark mode and high-contrast presets with full variable reference." },
+			];
+			return cards.map((card, i) => {
+				let hue = (i * 40 + 160) % 360;
+				return <div key={i} style={{
+					background: `hsl(${hue}, 30%, 14%)`,
+					border: `1px solid hsl(${hue}, 20%, 25%)`,
+					borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 6,
+				}}>
+					<div style={{ fontWeight: 700, fontSize: 13, color: `hsl(${hue}, 50%, 70%)` }}>{card.t}</div>
+					<div style={{ fontSize: 11, color: "#777", lineHeight: 1.5 }}>{card.d}</div>
+				</div>;
+			});
+		},
+		info: "Content cards — heights measured from DOM, no aspect-ratio needed",
+		src: '<Grid layout="* 12 ?w | *200~#"\n\textensions={[\n\t\tmasonry({ balanced: true })\n\t]}\n>\n\t<Card>...</Card>\n\t...\n</Grid>',
+		guide: "Text content without `--width`/`--height` CSS variables. The extension auto-detects this and measures actual `offsetHeight` from the DOM instead of computing from an aspect ratio.\n\nThis means cards fit their content exactly — no wasted space, no clipping. The masonry algorithm still pulls items up via `translateY()` to fill gaps.",
+		tryThis: ["Cards fit their content — no fixed aspect ratio", "Compare with Photo Gallery where aspect ratios are locked", "Resize the preview to see content reflow and re-measure"] },
+	{ cat: "Masonry", name: "Transposed", layout: "| * 8 ?h | *80~#", w: 400, h: 350,
+		ext: (v, p) => [masonry({ balanced: true })],
+		children: () => {
+			let frames = [
+				[3, 4], [1, 1], [4, 3], [2, 3], [1, 1], [3, 2],
+				[4, 3], [1, 1], [3, 4], [2, 3], [3, 2], [1, 1],
+			];
+			return frames.map(([w, h], i) => {
+				let hue = (i * 31 + 180) % 360;
+				return <div key={i} style={{
+					"--width": w, "--height": h,
+					background: `hsl(${hue}, 35%, 20%)`,
+					border: `1px solid hsl(${hue}, 25%, 32%)`,
+					borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+					fontSize: 11, fontWeight: 600, color: `hsl(${hue}, 50%, 65%)`, height: "100%",
+				}}>{w}:{h}</div>;
+			});
+		},
+		info: "Transposed masonry — horizontal packing with translateX",
+		src: '<Grid layout="| * 8 ?h | *80~#"\n\textensions={[\n\t\tmasonry({ balanced: true })\n\t]}\n>\n\t...\n</Grid>',
+		guide: "The `|` prefix transposes the layout — masonry packs horizontally instead of vertically. Rows become auto-fill tracks, and `translateX` shifts items left to close gaps.\n\nThe `*80~#` controls min row height (axes are swapped by transpose). `?h` fills container height.",
+		tryThis: ["Items pack horizontally instead of vertically", "Compare with the Regular preset to see the axis swap"] },
 
 	// --- render ---
 	{ cat: "Render", name: "Scrollable Table", layout: "*5 ?wh", w: 550, h: 300,
